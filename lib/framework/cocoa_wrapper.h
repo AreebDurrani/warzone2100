@@ -38,10 +38,13 @@ int cocoaShowAlert(const char *message, const char *information, unsigned style,
                    const char *buttonTitles, ...) __attribute__((sentinel));
 
 bool cocoaSelectFileInFinder(const char *filename);
+bool cocoaSelectFolderInFinder(const char* path);
 bool cocoaOpenURL(const char *url);
 bool cocoaOpenUserCrashReportFolder();
 
 bool cocoaGetApplicationSupportDir(char *const tmpstr, size_t const size);
+
+bool cocoaSetFileQuarantineAttribute(const char *path);
 
 #endif // WZ_OS_MAC
 

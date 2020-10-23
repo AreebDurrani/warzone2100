@@ -5,31 +5,9 @@ include(GNUInstallDirs)
 ############################
 # Versioning (autorevision)
 
-# Autorevision target that will run *every* build
-add_custom_target(autorevision ALL
-    DEPENDS
-        "${CMAKE_CURRENT_BINARY_DIR}/__shouldnotexist.h"
-)
-set_property(TARGET autorevision PROPERTY FOLDER "_WZBuildProcessTargets")
-
-# Autorevision command that will run *every* build
-set(_autorevision_cache_tarball_src_input "${CMAKE_CURRENT_SOURCE_DIR}/autorevision.cache")
-set(_autorevision_cache_file "${CMAKE_CURRENT_BINARY_DIR}/autorevision.cache")
-set(_autorevision_h_file "${CMAKE_CURRENT_BINARY_DIR}/autorevision.h")
-add_custom_command(
-    OUTPUT
-		"${CMAKE_CURRENT_BINARY_DIR}/__shouldnotexist.h"  # fake - ensure we run
-		"${_autorevision_h_file}"
-		"${_autorevision_cache_file}"
-	# Copy autorevision.cache from the src directory (if present)
-	# This supports proper versioning from distribution source archives
-	COMMAND ${CMAKE_COMMAND} -DINPUT_FILE=${_autorevision_cache_tarball_src_input} -DOUTPUT_FILE=${_autorevision_cache_file} -DSKIP_IF_INPUT_MISSING=ON -DSKIP_IF_OUTPUT_EXISTS=ON -P ${CMAKE_SOURCE_DIR}/cmake/CopyFileHelper.cmake
-	# Autorevision.cmake
-	# this command must generate: ${CMAKE_CURRENT_BINARY_DIR}/autorevision.h
-	COMMAND ${CMAKE_COMMAND} -DCACHEFILE=${_autorevision_cache_file} -DOUTPUT_TYPE=h -DOUTPUT_FILE=${_autorevision_h_file} -P ${CMAKE_SOURCE_DIR}/build_tools/autorevision.cmake
-	WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-	VERBATIM
-)
+# IMPORTANT: Must set GENERATED property at this directory level for autorevision.h
+set_source_files_properties("${wz2100_autorevision_cache_file}" PROPERTIES GENERATED TRUE)
+set_source_files_properties("${wz2100_autorevision_h_file}" PROPERTIES GENERATED TRUE)
 
 # On Windows, configure warzone2100.rc and the .manifest with updated version info
 if(CMAKE_SYSTEM_NAME MATCHES "Windows")
@@ -38,9 +16,9 @@ if(CMAKE_SYSTEM_NAME MATCHES "Windows")
 	set(_manifest_output_file "${CMAKE_CURRENT_BINARY_DIR}/warzone2100.manifest")
 	add_custom_command(
 		OUTPUT "${_manifest_output_file}"
-		COMMAND ${CMAKE_COMMAND} -DCACHEFILE=${_autorevision_cache_file} -DPROJECT_ROOT=${PROJECT_SOURCE_DIR} -DTEMPLATE_FILE=${_manifest_template_file} -DOUTPUT_FILE=${_manifest_output_file} -P ${CMAKE_SOURCE_DIR}/win32/autorevision_rc.cmake
+		COMMAND ${CMAKE_COMMAND} -DCACHEFILE=${wz2100_autorevision_cache_file} -DPROJECT_ROOT=${PROJECT_SOURCE_DIR} -DTEMPLATE_FILE=${_manifest_template_file} -DOUTPUT_FILE=${_manifest_output_file} -P ${CMAKE_SOURCE_DIR}/win32/autorevision_rc.cmake
 		WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-		DEPENDS "${_manifest_template_file}" "${_autorevision_cache_file}"
+		DEPENDS "${_manifest_template_file}" "${wz2100_autorevision_cache_file}"
 		VERBATIM
 	)
 
@@ -49,11 +27,19 @@ if(CMAKE_SYSTEM_NAME MATCHES "Windows")
 	set(_rc_output_file "${CMAKE_CURRENT_BINARY_DIR}/warzone2100.rc")
 	add_custom_command(
 		OUTPUT "${_rc_output_file}"
-		COMMAND ${CMAKE_COMMAND} -DCACHEFILE=${_autorevision_cache_file} -DPROJECT_ROOT=${PROJECT_SOURCE_DIR} -DTEMPLATE_FILE=${_rc_template_file} -DOUTPUT_FILE=${_rc_output_file} -P ${CMAKE_SOURCE_DIR}/win32/autorevision_rc.cmake
+		COMMAND ${CMAKE_COMMAND} -DCACHEFILE=${wz2100_autorevision_cache_file} -DPROJECT_ROOT=${PROJECT_SOURCE_DIR} -DTEMPLATE_FILE=${_rc_template_file} -DOUTPUT_FILE=${_rc_output_file} -P ${CMAKE_SOURCE_DIR}/win32/autorevision_rc.cmake
 		WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-		DEPENDS "${_rc_template_file}" "${_autorevision_cache_file}" "${_manifest_output_file}"
+		DEPENDS "${_rc_template_file}" "${wz2100_autorevision_cache_file}" "${_manifest_output_file}"
 		VERBATIM
 	)
+
+	add_custom_target(autorevision_winver ALL
+		DEPENDS
+			"${_manifest_output_file}"
+			"${CMAKE_CURRENT_BINARY_DIR}/warzone2100.rc"
+	)
+	set_property(TARGET autorevision_winver PROPERTY FOLDER "_WZBuildProcessTargets")
+	add_dependencies(autorevision_winver autorevision) # Ensure ordering and non-concurrency
 endif()
 
 # On macOS, generate the Info.plist file with updated version info at *build-time*
@@ -62,9 +48,9 @@ if(CMAKE_SYSTEM_NAME MATCHES "Darwin")
 	set(_info_plist_output_file "${CMAKE_CURRENT_BINARY_DIR}/Warzone-Info.plist")
 	add_custom_command(
 		OUTPUT "${_info_plist_output_file}"
-		COMMAND ${CMAKE_COMMAND} -DCACHEFILE=${_autorevision_cache_file} -DPROJECT_ROOT=${PROJECT_SOURCE_DIR} -DTEMPLATE_FILE=${_info_plist_template_file} -DOUTPUT_FILE=${_info_plist_output_file} -P ${CMAKE_SOURCE_DIR}/macosx/cmake/autorevision_infoplist.cmake
+		COMMAND ${CMAKE_COMMAND} -DCACHEFILE=${wz2100_autorevision_cache_file} -DPROJECT_ROOT=${PROJECT_SOURCE_DIR} -DTEMPLATE_FILE=${_info_plist_template_file} -DOUTPUT_FILE=${_info_plist_output_file} -P ${CMAKE_SOURCE_DIR}/macosx/cmake/autorevision_infoplist.cmake
 		WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-		DEPENDS "${_info_plist_template_file}" "${_autorevision_cache_file}" "${CMAKE_SOURCE_DIR}/macosx/cmake/autorevision_infoplist.cmake"
+		DEPENDS "${_info_plist_template_file}" "${wz2100_autorevision_cache_file}" "${CMAKE_SOURCE_DIR}/macosx/cmake/autorevision_infoplist.cmake"
 		VERBATIM
 	)
 
@@ -73,7 +59,6 @@ if(CMAKE_SYSTEM_NAME MATCHES "Darwin")
 			"${CMAKE_CURRENT_BINARY_DIR}/Warzone-Info.plist"
 	)
 	set_property(TARGET autorevision_infoplist PROPERTY FOLDER "_WZBuildProcessTargets")
-
 	add_dependencies(autorevision_infoplist autorevision) # Ensure ordering and non-concurrency
 
 endif()
@@ -85,8 +70,8 @@ if(ENABLE_NLS)
 	find_package (Intl REQUIRED)
 endif()
 
-file(GLOB HEADERS "*.h")
-file(GLOB SRC "*.cpp" "*/*.cpp")
+file(GLOB HEADERS "*.h" "3rdparty/*.h" "titleui/*.h")
+file(GLOB SRC "*.cpp" "3rdparty/*.cpp" "titleui/*.cpp")
 qt5_wrap_cpp(MOCFILES qtscriptdebug.h)
 
 set(_additionalSourceFiles)
@@ -94,16 +79,17 @@ if(CMAKE_SYSTEM_NAME MATCHES "Windows")
 	set(_additionalSourceFiles "${CMAKE_CURRENT_BINARY_DIR}/warzone2100.rc")
 endif()
 
-add_executable(warzone2100 ${HEADERS} ${SRC} ${MOCFILES} "${CMAKE_CURRENT_BINARY_DIR}/autorevision.h" ${_additionalSourceFiles})
+add_executable(warzone2100 ${HEADERS} ${SRC} ${MOCFILES} "${wz2100_autorevision_h_file}" ${_additionalSourceFiles})
 if(WZ_TARGET_ADDITIONAL_PROPERTIES)
 	SET_TARGET_PROPERTIES(warzone2100 PROPERTIES ${WZ_TARGET_ADDITIONAL_PROPERTIES})
 endif()
 target_compile_definitions(warzone2100 PRIVATE "YY_NO_UNISTD_H")
+target_compile_definitions(warzone2100 PRIVATE "JSON_USE_IMPLICIT_CONVERSIONS=0")
 SET_TARGET_PROPERTIES(warzone2100 PROPERTIES RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_BINARY_DIR}")
 SET_TARGET_PROPERTIES(warzone2100 PROPERTIES RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_BINARY_DIR}")
 SET_TARGET_PROPERTIES(warzone2100 PROPERTIES LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_BINARY_DIR}")
 SET_TARGET_PROPERTIES(warzone2100 PROPERTIES LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_BINARY_DIR}")
-SET_TARGET_PROPERTIES(warzone2100 PROPERTIES OUTPUT_NAME "warzone2100")
+SET_TARGET_PROPERTIES(warzone2100 PROPERTIES OUTPUT_NAME "warzone2100${WZ_OUTPUT_NAME_SUFFIX}")
 
 if(CMAKE_SYSTEM_NAME MATCHES "Windows")
 	# Build warzone exe as a Windows app (not a console app)
@@ -121,12 +107,77 @@ target_link_libraries(warzone2100
 	Qt5::Gui
 	Qt5::Widgets
 )
+target_link_libraries(warzone2100 launchinfo EmbeddedJSONSignature)
 if(ENABLE_NLS)
 	target_link_libraries(warzone2100 "${Intl_LIBRARIES}")
 endif()
 
+include(IncludeFindCurl)
+target_link_libraries(warzone2100 CURL::libcurl)
+target_link_libraries(warzone2100 re2::re2)
+
+set(_curl_gnutls_thread_safe_fix FALSE)
+if (DEFINED CURL_GNUTLS_REQUIRES_CALLBACKS)
+	if (CURL_GNUTLS_REQUIRES_CALLBACKS STREQUAL "YES")
+		# explicit gcry_control() is required when GnuTLS < 2.11.0
+		find_package(LibGcrypt)
+		if (LIBGCRYPT_FOUND)
+			message(STATUS "LIBGCRYPT_LIBRARIES=\"${LIBGCRYPT_LIBRARIES}\"")
+			message(STATUS "LIBGCRYPT_INCLUDE_DIR=\"${LIBGCRYPT_INCLUDE_DIR}\"")
+			target_link_libraries(warzone2100 "${LIBGCRYPT_LIBRARIES}")
+			target_include_directories(warzone2100 PRIVATE "${LIBGCRYPT_INCLUDE_DIR}")
+			target_compile_definitions(warzone2100 PRIVATE "USE_OLD_GNUTLS_LOCKS_INIT")
+			message(STATUS "Enabling thread-safety measures for cURL GnuTLS backend")
+			set(_curl_gnutls_thread_safe_fix TRUE)
+		else()
+			message(WARNING "Unable to enable thread-safety callbacks for cURL GnuTLS backend; please either upgrade GnuTLS > 2.11.0 or ensure libgcrypt-dev is installed.")
+		endif()
+	elseif (CURL_GNUTLS_REQUIRES_CALLBACKS STREQUAL "NO")
+		# no explicit lock setup is required
+		message(STATUS "cURL GnuTLS backend is GnuTLS > 2.11.0; no callbacks required")
+		target_compile_definitions(warzone2100 PRIVATE "CURL_GNUTLS_DOES_NOT_REQUIRE_LOCKS_INIT")
+		set(_curl_gnutls_thread_safe_fix TRUE)
+	else()
+		message(WARNING "cURL is linked to GnuTLS, but could not find GnuTLS or determine GnuTLS version - not enabling thread-safety callbacks for GnuTLS backend")
+	endif()
+endif()
+if (DEFINED CURL_OPENSSL_REQUIRES_CALLBACKS)
+	# Check for any other thread-safe SSL backends
+	set(_curl_has_thread_safe_backend FALSE)
+	foreach(_backend ${CURL_SUPPORTED_SSL_BACKENDS})
+		# determine if there are any non-OpenSSL, thread-safe backends enabled
+		if (NOT _backend STREQUAL "OpenSSL")
+			if (_backend STREQUAL "GnuTLS" AND _curl_gnutls_thread_safe_fix)
+				set(_curl_has_thread_safe_backend TRUE)
+			else()
+				# All non-OpenSSL / non-GnuTLS backends supposedly do not require explicit lock configuration
+				set(_curl_has_thread_safe_backend TRUE)
+			endif()
+		endif()
+	endforeach()
+	if (NOT _curl_has_thread_safe_backend)
+		if (CURL_OPENSSL_REQUIRES_CALLBACKS STREQUAL "YES")
+			target_link_libraries(warzone2100 OpenSSL::Crypto)
+			target_compile_definitions(warzone2100 PRIVATE "USE_OPENSSL_LOCKS_INIT")
+			message(STATUS "Enabling thread-safety callbacks for cURL OpenSSL backend")
+		elseif (CURL_OPENSSL_REQUIRES_CALLBACKS STREQUAL "NO")
+			message(STATUS "cURL OpenSSL backend (OpenSSL ${OPENSSL_VERSION}) is > 1.1.0; no callbacks required")
+			target_compile_definitions(warzone2100 PRIVATE "CURL_OPENSSL_DOES_NOT_REQUIRE_LOCKS_INIT")
+		else()
+			message(WARNING "cURL is linked to OpenSSL, but could not find OpenSSL or determine OpenSSL version - not enabling thread-safety callbacks for OpenSSL backend")
+		endif()
+	else()
+		message(STATUS "Ignoring cURL OpenSSL backend, as other thread-safe backend(s) exist")
+	endif()
+endif()
+if (NOT DEFINED CURL_SUPPORTED_SSL_BACKENDS)
+	if (NOT VCPKG_TOOLCHAIN) # ignore warning when using vcpkg
+		message(WARNING "Could not determine cURL's SSL/TLS backends; if cURL is built with OpenSSL < 1.1.0 or GnuTLS < 2.11.0, this may result in thread-safety issues")
+	endif()
+endif()
+
 if(CMAKE_SYSTEM_NAME MATCHES "Windows")
-    target_link_libraries(warzone2100 ws2_32 iphlpapi)
+    target_link_libraries(warzone2100 ws2_32 iphlpapi shlwapi ole32)
 endif()
 
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
@@ -137,6 +188,26 @@ if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" OR "${CMAKE_CXX_COMPILER_ID}" STREQ
   else()
     set_target_properties(warzone2100 PROPERTIES LINK_FLAGS "-Wl,--start-group")
   endif()
+endif()
+
+if(ENABLE_DISCORD)
+	if (TARGET discord-rpc)
+		target_include_directories(warzone2100 PRIVATE "${CMAKE_SOURCE_DIR}/3rdparty/discord-rpc/include")
+		target_link_libraries(warzone2100 discord-rpc)
+		target_sources(warzone2100 PRIVATE "integrations/wzdiscordrpc.h" "integrations/wzdiscordrpc.cpp")
+		target_compile_definitions(warzone2100 PRIVATE "ENABLE_DISCORD")
+	else()
+		message(WARNING "Missing target: discord-rpc")
+	endif()
+endif()
+
+# Dependencies
+add_dependencies(warzone2100 data)
+if(TARGET wz2100_doc)
+	add_dependencies(warzone2100 wz2100_doc)
+endif()
+if(TARGET translations)
+	add_dependencies(warzone2100 translations)
 endif()
 
 ############################
@@ -157,6 +228,27 @@ set(WZ_APP_INSTALL_DEST "${CMAKE_INSTALL_BINDIR}")
 # - The appropriate XCODE_LAST_KNOWN_FILE_TYPE is set on non-source files to fix "endless Xcode indexing" issues
 # - A *build-time*-generated Info.plist is used, instead of CMake's default configure-time-generated Info.plist setup
 #   (ensuring that the Info.plist reflects the latest autorevision info)
+
+function(CopyVulkanLayerJSON _input_file _output_file _new_library_path)
+
+	configure_file("${_input_file}" "${_output_file}" COPYONLY)
+
+	file(READ "${_output_file}" _strings_NEW_OUTPUT_FILE
+		ENCODING UTF-8
+	)
+	string(REGEX MATCH "(\"library_path\":[^\"]*)\"([^\"]*)\"" _library_path_match "${_strings_NEW_OUTPUT_FILE}")
+	if(_library_path_match)
+		set(_full_match "${CMAKE_MATCH_0}")
+		set(_library_path_key "${CMAKE_MATCH_1}")
+		if(CMAKE_MATCH_2)
+			get_filename_component(_library_name "${CMAKE_MATCH_2}" NAME)
+			string(REGEX REPLACE "${_full_match}" "${_library_path_key}\"${_new_library_path}${_library_name}\"" _strings_NEW_OUTPUT_FILE "${_strings_NEW_OUTPUT_FILE}")
+		endif()
+		file(WRITE "${_output_file}" "${_strings_NEW_OUTPUT_FILE}")
+	endif()
+	unset(_strings_NEW_OUTPUT_FILE)
+
+endfunction()
 
 if(CMAKE_SYSTEM_NAME MATCHES "Darwin")
 
@@ -206,7 +298,13 @@ if(CMAKE_SYSTEM_NAME MATCHES "Darwin")
 	set_target_properties(warzone2100 PROPERTIES XCODE_ATTRIBUTE_CODE_SIGN_ENTITLEMENTS "${_wz_entitlements_file}")
 
 	# To properly bundle the resources, they must be built before the app
-	add_dependencies(warzone2100 data wz2100_doc translations)
+	add_dependencies(warzone2100 data)
+	if(ENABLE_DOCS)
+		add_dependencies(warzone2100 wz2100_doc)
+	endif()
+	if(ENABLE_NLS)
+		add_dependencies(warzone2100 translations)
+	endif()
 
 	# Bundle the Data resources
 	set_property(
@@ -244,28 +342,32 @@ if(CMAKE_SYSTEM_NAME MATCHES "Darwin")
 	target_sources(warzone2100 PRIVATE ${wz2100_fonts_FILES})
 
 	# Bundle the translations
-	set_source_files_properties(
-		"${wz2100_translations_LOCALE_FOLDER}"
-		PROPERTIES
-		MACOSX_PACKAGE_LOCATION "Resources"
-		GENERATED TRUE
-		XCODE_LAST_KNOWN_FILE_TYPE "folder"
-	)
-	target_sources(warzone2100 PRIVATE "${wz2100_translations_LOCALE_FOLDER}")
-		# See xcodeproj "i18n" stage
-		# Uses the wzlocal lproj files + config/LangDis to determine what to copy - should we replicate?
+	if(ENABLE_NLS)
+		set_source_files_properties(
+			"${wz2100_translations_LOCALE_FOLDER}"
+			PROPERTIES
+			MACOSX_PACKAGE_LOCATION "Resources"
+			GENERATED TRUE
+			XCODE_LAST_KNOWN_FILE_TYPE "folder"
+		)
+		target_sources(warzone2100 PRIVATE "${wz2100_translations_LOCALE_FOLDER}")
+			# See xcodeproj "i18n" stage
+			# Uses the wzlocal lproj files + config/LangDis to determine what to copy - should we replicate?
+	endif()
 
 	# Bundle the docs
-	set_property(
-		SOURCE ${wz2100_doc_FILES}
-		PROPERTY MACOSX_PACKAGE_LOCATION "Resources/docs")
-	set_property(
-		SOURCE ${wz2100_doc_IMAGES_FILES}
-		PROPERTY MACOSX_PACKAGE_LOCATION "Resources/docs/images")
-	set_source_files_properties(
-		${wz2100_doc_FILES} ${wz2100_doc_IMAGES_FILES}
-		PROPERTIES GENERATED TRUE)
-	target_sources(warzone2100 PRIVATE ${wz2100_doc_FILES} ${wz2100_doc_IMAGES_FILES})
+	if(ENABLE_DOCS)
+		set_property(
+			SOURCE ${wz2100_doc_FILES}
+			PROPERTY MACOSX_PACKAGE_LOCATION "Resources/docs")
+		set_property(
+			SOURCE ${wz2100_doc_IMAGES_FILES}
+			PROPERTY MACOSX_PACKAGE_LOCATION "Resources/docs/images")
+		set_source_files_properties(
+			${wz2100_doc_FILES} ${wz2100_doc_IMAGES_FILES}
+			PROPERTIES GENERATED TRUE)
+		target_sources(warzone2100 PRIVATE ${wz2100_doc_FILES} ${wz2100_doc_IMAGES_FILES})
+	endif()
 
 	# Bundle the wz2100_ROOT_FILES (COPYING, README, etc)
 	if (wz2100_ROOT_FILES)
@@ -365,6 +467,86 @@ if(CMAKE_SYSTEM_NAME MATCHES "Darwin")
 	copy_qt5_plugin("Qt5::QCocoaIntegrationPlugin")
 	copy_qt5_plugin("Qt5::QCocoaPrinterSupportPlugin")
 
+	if(WZ_ENABLE_BACKEND_VULKAN)
+		# Vulkan / MoltenVK
+		find_package(Vulkan)
+		if (Vulkan_FOUND)
+			message( STATUS "Vulkan_LIBRARY=${Vulkan_LIBRARY}" )
+			set(_vulkan_dylibs "${Vulkan_LIBRARY}")
+
+			# Use path to Vulkan_LIBRARY to find other dylibs in the Vulkan SDK
+			get_filename_component(VulkanSDK_LIB_DIR "${Vulkan_LIBRARY}" DIRECTORY)
+
+			# Vulkan_LIBRARY realpath (Vulkan_LIBRARY is often a symlink)
+			get_filename_component(_vulkan_library_realpath "${Vulkan_LIBRARY}" REALPATH)
+			if (NOT _vulkan_library_realpath STREQUAL Vulkan_LIBRARY)
+				list(APPEND _vulkan_dylibs "${_vulkan_library_realpath}")
+			endif()
+
+			# MoltenVK dylib
+			if(EXISTS "${VulkanSDK_LIB_DIR}/libMoltenVK.dylib")
+				list(APPEND _vulkan_dylibs "${VulkanSDK_LIB_DIR}/libMoltenVK.dylib")
+			else()
+				message( FATAL_ERROR "Missing expected libMoltenVK.dylib at: ${VulkanSDK_LIB_DIR}/libMoltenVK.dylib" )
+			endif()
+
+			# Vulkan layers
+			file(GLOB _vulkan_layers LIST_DIRECTORIES false "${VulkanSDK_LIB_DIR}/libVkLayer_*.dylib")
+			list(APPEND _vulkan_dylibs ${_vulkan_layers})
+
+			# Copy _vulkan_dylibs to Frameworks folder now (don't wait for CMake install)
+			foreach(_dylib ${_vulkan_dylibs})
+				set_source_files_properties(
+					"${_dylib}" PROPERTIES
+					MACOSX_PACKAGE_LOCATION "Frameworks"
+					XCODE_LAST_KNOWN_FILE_TYPE "compiled.mach-o.dylib"
+				)
+				if(NOT IS_SYMLINK "${_dylib}")
+					set_source_files_properties(
+						"${_dylib}" PROPERTIES
+						XCODE_FILE_ATTRIBUTES "CodeSignOnCopy;"
+					)
+				endif()
+				if(NOT CMAKE_GENERATOR STREQUAL "Xcode")
+					# Other generators will need a custom-command equivalent of setting the "Code Sign on Copy" Xcode attribute to ON
+					message( WARNING "The generator \"${CMAKE_GENERATOR}\" does not currently handle code-signing: \"${_dylib}\"" )
+				endif()
+				target_sources(warzone2100 PRIVATE "${_dylib}")
+			endforeach()
+
+			set(_vulkan_resources "")
+			get_filename_component(_VulkanSDK_parent "${VulkanSDK_LIB_DIR}" DIRECTORY)
+			set(VulkanSDK_SHARE_VULKAN_DIR "${_VulkanSDK_parent}/share/vulkan")
+			if (NOT IS_DIRECTORY "${VulkanSDK_SHARE_VULKAN_DIR}")
+				message( FATAL_ERROR "Unable to find /share/vulkan at: ${VulkanSDK_SHARE_VULKAN_DIR}" )
+			endif()
+
+			# Vulkan JSON files (explicit_layer.d, icd.d)
+			file(GLOB _vulkan_json LIST_DIRECTORIES false "${VulkanSDK_SHARE_VULKAN_DIR}/explicit_layer.d/*.json" "${VulkanSDK_SHARE_VULKAN_DIR}/icd.d/*.json")
+
+			# Fix up each Vulkan JSON file
+			foreach(_jsonFile ${_vulkan_json})
+				get_filename_component(_jsonFile_Name "${_jsonFile}" NAME)
+				string(REGEX REPLACE "^${VulkanSDK_SHARE_VULKAN_DIR}/" "" _jsonFile_SubPath "${_jsonFile}")
+				get_filename_component(_jsonFile_SubPath "${_jsonFile_SubPath}" DIRECTORY)
+				CopyVulkanLayerJSON("${_jsonFile}" "${CMAKE_CURRENT_BINARY_DIR}/generated_resources/vulkan/${_jsonFile_SubPath}/${_jsonFile_Name}" "../../../Frameworks/")
+			endforeach()
+
+			# Copy Vulkan configuration JSON files to Resources folder of bundle
+			set_source_files_properties(
+				"${CMAKE_CURRENT_BINARY_DIR}/generated_resources/vulkan"
+				PROPERTIES
+				MACOSX_PACKAGE_LOCATION "Resources"
+				GENERATED TRUE
+				XCODE_LAST_KNOWN_FILE_TYPE "folder"
+			)
+			target_sources(warzone2100 PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated_resources/vulkan")
+
+		else(Vulkan_FOUND)
+			message(WARNING "Vulkan backend is enabled, but the Vulkan SDK cannot be found. The macOS app bundle will lack required support libraries.")
+		endif(Vulkan_FOUND)
+	endif(WZ_ENABLE_BACKEND_VULKAN)
+
 	# Set install RPATH for WZ app bundle
 	set_target_properties(warzone2100 PROPERTIES INSTALL_RPATH "@executable_path/../Frameworks")
 
@@ -375,6 +557,22 @@ if(CMAKE_SYSTEM_NAME MATCHES "Darwin")
 	set(WZ_APP_INSTALL_DEST ".")
 
 endif()
+
+##############################
+# IDE Debug/Run Configuration
+
+# For Visual Studio project generator
+set_target_properties(warzone2100 PROPERTIES
+	VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:warzone2100>"
+	VS_DEBUGGER_COMMAND           "$<TARGET_FILE:warzone2100>"
+	VS_DEBUGGER_COMMAND_ARGUMENTS "--gfxdebug"
+)
+
+# For Xcode project generator
+set_target_properties(warzone2100 PROPERTIES
+	XCODE_GENERATE_SCHEME TRUE
+	XCODE_SCHEME_ARGUMENTS "--gfxdebug"
+)
 
 #######################
 # Hardening / Security
@@ -457,7 +655,7 @@ if(CMAKE_SYSTEM_NAME MATCHES "Windows")
 				endif()
 			endif()
 			install(CODE "
-				if(\"\${CMAKE_BUILD_TYPE}\" STREQUAL \"Debug\")
+				if(\"\${CMAKE_INSTALL_CONFIG_NAME}\" MATCHES \"^([Dd][Ee][Bb][Uu][Gg])$\")
 					set(dll_source_dirs \"${CMAKE_PREFIX_PATH}/debug/bin/\")
 				else()
 					set(dll_source_dirs \"${CMAKE_PREFIX_PATH}/bin/\")
@@ -494,6 +692,44 @@ if(CMAKE_SYSTEM_NAME MATCHES "Windows")
 			else()
 				message( WARNING "Unable to find windeployqt; installation may not included all required Qt libraries" )
 			endif()
+
+			# Install LibANGLE DLLs (if available, from vcpkg)
+			find_package(unofficial-angle CONFIG)
+			if(unofficial-angle_FOUND)
+				if(TARGET unofficial::angle::libEGL)
+					get_target_property(_libEGL_dll unofficial::angle::libEGL IMPORTED_LOCATION_RELEASE)
+				endif()
+
+				if(TARGET unofficial::angle::libGLESv2)
+					get_target_property(_libGLESv2_dll unofficial::angle::libGLESv2 IMPORTED_LOCATION_RELEASE)
+				endif()
+
+				if(_libEGL_dll AND _libGLESv2_dll)
+					if(EXISTS "${_libEGL_dll}")
+						message( STATUS "LibANGLE (libEGL): ${_libEGL_dll}" )
+						install(FILES
+							"${_libEGL_dll}"
+							COMPONENT Core DESTINATION "${WZ_APP_INSTALL_DEST}"
+						)
+					else()
+						message( WARNING "Missing expected libEGL DLL at: ${_libEGL_dll}" )
+					endif()
+					if(EXISTS "${_libGLESv2_dll}")
+						message( STATUS "LibANGLE (libGLESv2): ${_libGLESv2_dll}" )
+						install(FILES
+							"${_libGLESv2_dll}"
+							COMPONENT Core DESTINATION "${WZ_APP_INSTALL_DEST}"
+						)
+					else()
+						message( WARNING "Missing expected libGLESv2 DLL at: ${_libGLESv2_dll}" )
+					endif()
+				else()
+					message( WARNING "Found LibANGLE, but could not find the built DLLs - LibANGLE will *not* be installed." )
+				endif()
+			else()
+				message( WARNING "Could not find LibANGLE - LibANGLE will *not* be installed. (DirectX via LibANGLE will not be supported)" )
+			endif()
+
 		else()
 			message( STATUS "CMAKE_CROSSCOMPILING is defined - skipping BundleUtilities" )
 		endif()

@@ -81,30 +81,19 @@ private:
 	bool hasWaitingIP = false;
 };
 
-// - multiint.cpp -
-class WzMultiOptionTitleUI: public WzTitleUI
-{
-public:
-	WzMultiOptionTitleUI(std::shared_ptr<WzTitleUI> parent);
-	virtual void start() override;
-	virtual TITLECODE run() override;
-	void frontendMultiMessages(bool running);
-private:
-	void processMultiopWidgets(UDWORD button);
-	std::shared_ptr<WzTitleUI> parent;
-	bool performedFirstStart = false;
-};
+// - multiint.cpp (defined in titleui/multiplayer.h) -
+class WzMultiplayerOptionsTitleUI;
 
 // - multilimit.cpp -
 class WzMultiLimitTitleUI: public WzTitleUI
 {
 public:
-	WzMultiLimitTitleUI(std::shared_ptr<WzMultiOptionTitleUI> parent);
+	WzMultiLimitTitleUI(std::shared_ptr<WzMultiplayerOptionsTitleUI> parent);
 	virtual void start() override;
 	virtual TITLECODE run() override;
 private:
-	// The parent WzMultiOptionTitleUI to return to.
-	std::shared_ptr<WzMultiOptionTitleUI> parent;
+	// The parent WzMultiplayerOptionsTitleUI to return to.
+	std::shared_ptr<WzMultiplayerOptionsTitleUI> parent;
 };
 
 // - msgbox.cpp -
@@ -139,6 +128,7 @@ class WzGameFindTitleUI: public WzTitleUI
 {
 public:
 	WzGameFindTitleUI();
+	~WzGameFindTitleUI();
 	virtual void start() override;
 	virtual TITLECODE run() override;
 private:
@@ -146,6 +136,7 @@ private:
 	void addConsoleBox();
 	bool safeSearch = false; // allow auto game finding.
 	bool toggleFilter = true; // Used to show all games or only games that are of the same version
+	bool queuedRefreshOfGamesList = false;
 };
 
 #define WZ_MSGBOX_TUI_LEAVE 4597000

@@ -19,6 +19,7 @@
 */
 
 #include "dumpinfo.h"
+#include <LaunchInfo.h>
 #include <cerrno>
 #include <climits>
 #include <ctime>
@@ -203,13 +204,13 @@ static std::string getProgramPath(const char *programCommand)
 #elif defined(WZ_OS_UNIX) && !defined(WZ_OS_MAC)
 	{
 		FILE *whichProgramStream;
-		char *whichProgramCommand;
+		std::string whichProgramCommand;
 
-		sasprintf(&whichProgramCommand, "which %s", programCommand);
-		whichProgramStream = popen(whichProgramCommand, "r");
+		whichProgramCommand = std::string("which ") + programCommand;
+		whichProgramStream = popen(whichProgramCommand.c_str(), "r");
 		if (whichProgramStream == nullptr)
 		{
-			debug(LOG_WARNING, "Failed to run \"%s\", will not create extended backtrace", whichProgramCommand);
+			debug(LOG_WARNING, "Failed to run \"%s\", will not create extended backtrace", whichProgramCommand.c_str());
 			return std::string();
 		}
 
@@ -487,6 +488,12 @@ static void createHeader(int const argc, const char * const *argv, const char *p
 	}
 
 	os << endl;
+	const auto& parentProcesses = LaunchInfo::getAncestorProcesses();
+	os << "Ancestors: " << endl;
+	for (const auto& parent : parentProcesses)
+	{
+		os << "- (" << parent.pid << ") " << parent.imageFileName << endl;
+	}
 	os << "Version: "     << packageVersion << endl
 	   << "Distributor: " PACKAGE_DISTRIBUTOR << endl
 	   << "Compiled on: " << getCompileDate() << " " << __TIME__ << endl

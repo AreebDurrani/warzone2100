@@ -31,6 +31,9 @@
 #include "orderdef.h"
 #include "stringdef.h"
 #include "messagedef.h"
+#include "levels.h"
+#include <vector>
+#include <string>
 
 class DROID_GROUP;
 struct BASE_OBJECT;
@@ -45,7 +48,7 @@ struct STRUCTURE;
 // Also used for skirmish games. And sometimes for campaign. Should be moved somewhere else.
 struct MULTIPLAYERGAME
 {
-	uint8_t		type;						// DMATCH/CAMPAIGN/SKIRMISH/TEAMPLAY etc...
+	LEVEL_TYPE	type;						// DMATCH/CAMPAIGN/SKIRMISH/TEAMPLAY etc...
 	bool		scavengers;					// whether scavengers are on or off
 	char		map[128];					// name of multiplayer map being used.
 	uint8_t		maxPlayers;					// max players to allow
@@ -55,9 +58,9 @@ struct MULTIPLAYERGAME
 	uint32_t    power;						// power level for arena game
 	uint8_t		base;						// clean/base/base&defence
 	uint8_t		alliance;					// no/yes/locked
-	uint8_t		skDiff[MAX_PLAYERS];		// skirmish game difficulty settings. 0x0=OFF 0xff=HUMAN
 	bool		mapHasScavengers;
 	bool		isMapMod;					// if a map has mods
+	bool        isRandom;                   // If a map is non-static.
 	uint32_t	techLevel;					// what technology level is being used
 };
 
@@ -65,6 +68,14 @@ struct MULTISTRUCTLIMITS
 {
 	uint32_t        id;
 	uint32_t        limit;
+};
+
+// The side we are *configured* as. Used to indicate whether we are the server or the client. Note that when
+// playing singleplayer, we are running as a host, not a client. Values are booleans as this replaces the old
+// `bool bHostSetup`.
+enum class InGameSide : bool {
+	HOST_OR_SINGLEPLAYER = true,
+	MULTIPLAYER_CLIENT = false
 };
 
 // info used inside games.
@@ -75,12 +86,11 @@ struct MULTIPLAYERINGAME
 	bool				localJoiningInProgress;				// used before we know our player number.
 	bool				JoiningInProgress[MAX_PLAYERS];
 	bool				DataIntegrity[MAX_PLAYERS];
-	bool				bHostSetup;
+	InGameSide			side;
 	int32_t				TimeEveryoneIsInGame;
 	bool				isAllPlayersDataOK;
 	UDWORD				startTime;
-	UDWORD				numStructureLimits;					// number of limits
-	MULTISTRUCTLIMITS	*pStructureLimits;					// limits chunk.
+	std::vector<MULTISTRUCTLIMITS> structureLimits;
 	uint8_t				flags;  ///< Bitmask, shows which structures are disabled.
 #define MPFLAGS_NO_TANKS	0x01  		///< Flag for tanks disabled
 #define MPFLAGS_NO_CYBORGS	0x02  		///< Flag for cyborgs disabled
@@ -113,6 +123,13 @@ extern bool bMultiMessages;				// == bMultiPlayer unless multi messages are disa
 extern bool openchannels[MAX_PLAYERS];
 extern UBYTE bDisplayMultiJoiningStatus;	// draw load progress?
 
+#define RUN_ONLY_ON_SIDE(_side) \
+	if (ingame.side != _side) \
+	{ \
+		return; \
+	}
+
+
 // ////////////////////////////////////////////////////////////////////////////
 // defines
 
@@ -129,13 +146,16 @@ extern UBYTE bDisplayMultiJoiningStatus;	// draw load progress?
 #define CAMP_BASE				1
 #define CAMP_WALLS				2
 
-#define PING_LIMIT                              4000                    // If ping is bigger than this, then worry and panic, and don't even try showing the ping.
+#define PING_LIMIT				4000		// If ping is bigger than this, then worry and panic, and don't even try showing the ping.
 
 #define LEV_LOW					0
 #define LEV_MED					1
 #define LEV_HI					2
 
-#define DIFF_SLIDER_STOPS		20			//max number of stops for the multiplayer difficulty slider
+#define TECH_1					1
+#define TECH_2					2
+#define TECH_3					3
+#define TECH_4					4
 
 #define MAX_KICK_REASON			80			// max array size for the reason your kicking someone
 // functions
@@ -196,8 +216,27 @@ bool sendDroidDisembark(DROID const *psTransporter, DROID const *psDroid);
 bool multiShutdown();
 bool sendLeavingMsg();
 
-bool hostCampaign(char *sGame, char *sPlayer);
-bool joinGame(const char *host, uint32_t port);
+bool hostCampaign(char *sGame, char *sPlayer, bool skipResetAIs);
+struct JoinConnectionDescription
+{
+public:
+	JoinConnectionDescription() { }
+	JoinConnectionDescription(const std::string& host, uint32_t port)
+	: host(host)
+	, port(port)
+	{ }
+public:
+	std::string host;
+	uint32_t port = 0;
+};
+std::vector<JoinConnectionDescription> findLobbyGame(const std::string& lobbyAddress, unsigned int lobbyPort, uint32_t lobbyGameId);
+enum class JoinGameResult {
+	FAILED,
+	JOINED,
+	PENDING_PASSWORD
+};
+JoinGameResult joinGame(const char *host, uint32_t port);
+JoinGameResult joinGame(const std::vector<JoinConnectionDescription>& connection_list);
 void playerResponding();
 bool multiGameInit();
 bool multiGameShutdown();
@@ -216,7 +255,7 @@ bool sendBeacon(int32_t locX, int32_t locY, int32_t forPlayer, int32_t sender, c
 
 bool multiplayPlayersReady(bool bNotifyStatus);
 void startMultiplayerGame();
-void resetReadyStatus(bool bSendOptions);
+void resetReadyStatus(bool bSendOptions, bool ignoreReadyReset = false);
 
 STRUCTURE *findResearchingFacilityByResearchIndex(unsigned player, unsigned index);
 

@@ -667,7 +667,7 @@ TRACK *sound_LoadTrackFromFile(const char *fileName)
 
 	// Use PhysicsFS to open the file
 	fileHandle = PHYSFS_openRead(fileName);
-	debug(LOG_NEVER, "Reading...[directory: %s] %s", PHYSFS_getRealDir(fileName), fileName);
+	debug(LOG_NEVER, "Reading...[directory: %s] %s", WZ_PHYSFS_getRealDir_String(fileName).c_str(), fileName);
 	if (fileHandle == nullptr)
 	{
 		debug(LOG_ERROR, "sound_LoadTrackFromFile: PHYSFS_openRead(\"%s\") failed with error: %s\n", fileName, WZ_PHYSFS_getLastError());
@@ -879,9 +879,13 @@ bool sound_Play3DSample(TRACK *psTrack, AUDIO_SAMPLE *psSample)
 		 */
 	}
 
+#if defined(WZ_OS_UNIX) && !defined(WZ_OS_MAC)
 	// HACK: this is a workaround for a bug in the 64bit implementation of OpenAL on GNU/Linux
 	// The AL_PITCH value really should be 1.0.
 	alSourcef(psSample->iSample, AL_PITCH, 1.001f);
+#else
+	alSourcef(psSample->iSample, AL_PITCH, 1.0f);
+#endif
 
 	sound_SetObjectPosition(psSample);
 	alSourcefv(psSample->iSample, AL_VELOCITY, zero);
@@ -940,7 +944,8 @@ AUDIO_STREAM *sound_PlayStream(PHYSFS_file *fileHandle, float volume, void (*onF
 AUDIO_STREAM *sound_PlayStreamWithBuf(PHYSFS_file *fileHandle, float volume, void (*onFinished)(const void *), const void *user_data, size_t streamBufferSize, unsigned int buffer_count)
 {
 	AUDIO_STREAM *stream;
-	ALuint       *buffers = (ALuint *)alloca(sizeof(ALuint) * buffer_count);
+	ALuint       *buffers = nullptr;
+	bool freeBuffers = false;
 	ALint error;
 	unsigned int i;
 
@@ -988,11 +993,25 @@ AUDIO_STREAM *sound_PlayStreamWithBuf(PHYSFS_file *fileHandle, float volume, voi
 
 	alSourcef(stream->source, AL_GAIN, stream->volume);
 
+#if defined(WZ_OS_UNIX) && !defined(WZ_OS_MAC)
 	// HACK: this is a workaround for a bug in the 64bit implementation of OpenAL on GNU/Linux
 	// The AL_PITCH value really should be 1.0.
 	alSourcef(stream->source, AL_PITCH, 1.001f);
+#else
+	alSourcef(stream->source, AL_PITCH, 1.0f);
+#endif
 
 	// Create some OpenAL buffers to store the decoded data in
+	if (buffer_count <= (1024 / sizeof(ALuint))) // See CMakeLists.txt for value of -Walloca-larger-than=<N>
+	{
+		buffers = (ALuint *)alloca(buffer_count * sizeof(ALuint));
+	}
+	else
+	{
+		// Too many buffers - don't allocate on the stack!
+		buffers = (ALuint *)malloc(buffer_count * sizeof(ALuint));
+		freeBuffers = true;
+	}
 	alGenBuffers(buffer_count, buffers);
 	sound_GetError();
 
@@ -1045,6 +1064,12 @@ AUDIO_STREAM *sound_PlayStreamWithBuf(PHYSFS_file *fileHandle, float volume, voi
 		// Free allocated memory
 		free(stream);
 
+		if(freeBuffers)
+		{
+			free(buffers);
+		}
+		buffers = nullptr;
+
 		return nullptr;
 	}
 
@@ -1065,6 +1090,12 @@ AUDIO_STREAM *sound_PlayStreamWithBuf(PHYSFS_file *fileHandle, float volume, voi
 	// Prepend this stream to the linked list
 	stream->next = active_streams;
 	active_streams = stream;
+
+	if(freeBuffers)
+	{
+		free(buffers);
+	}
+	buffers = nullptr;
 
 	return stream;
 }

@@ -26,6 +26,7 @@
 #include "frameresource.h"
 
 #include "string_ext.h"
+#include "physfs_ext.h"
 
 #include "file.h"
 #include "resly.h"
@@ -132,7 +133,7 @@ void resSetLoadCallback(RESLOAD_CALLBACK funcToCall)
 }
 
 /* do the callback for the resload display function */
-static inline void resDoResLoadCallback()
+void resDoResLoadCallback()
 {
 	if (resLoadCallback)
 	{
@@ -190,7 +191,7 @@ bool resLoad(const char *pResFile, SDWORD blockID)
 	// Note the block id number
 	resBlockID = blockID;
 
-	debug(LOG_WZ, "resLoad: loading [directory: %s] %s", PHYSFS_getRealDir(pResFile), pResFile);
+	debug(LOG_WZ, "resLoad: loading [directory: %s] %s", WZ_PHYSFS_getRealDir_String(pResFile).c_str(), pResFile);
 
 	// Load the RES file; allocate memory for a wrf, and load it
 	input.type = LEXINPUT_PHYSFS;

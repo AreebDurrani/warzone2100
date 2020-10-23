@@ -83,7 +83,19 @@
 #include "map.h"
 #include "keybind.h"
 #include "random.h"
+#include "urlrequest.h"
 #include <time.h>
+#include <LaunchInfo.h>
+#include <sodium.h>
+#include "updatemanager.h"
+#include "activity.h"
+#if defined(ENABLE_DISCORD)
+#include "integrations/wzdiscordrpc.h"
+#endif
+
+#if defined(WZ_OS_UNIX)
+# include <signal.h>
+#endif
 
 #if defined(WZ_OS_MAC)
 // NOTE: Moving these defines is likely to (and has in the past) break the mac builds
@@ -126,6 +138,10 @@ static GS_GAMEMODE gameStatus = GS_TITLE_SCREEN;
 // Status of the gameloop
 static GAMECODE gameLoopStatus = GAMECODE_CONTINUE;
 static FOCUS_STATE focusState = FOCUS_IN;
+
+#if defined(WZ_OS_UNIX)
+static bool ignoredSIGPIPE = false;
+#endif
 
 
 #if defined(WZ_OS_WIN)
@@ -661,34 +677,34 @@ static void scanDataDirs()
 
 		if (!PHYSFS_exists("gamedesc.lev"))
 		{
-			// Relocation for AutoPackage (<prefix>/share/warzone2100/)
-			tmpstr = prefix + dirSeparator + "share" + dirSeparator + "warzone2100" + dirSeparator;
-			registerSearchPath(tmpstr.c_str(), 4);
+			// Program dir
+			registerSearchPath(PHYSFS_getBaseDir(), 4);
 			rebuildSearchPath(mod_multiplay, true);
 
 			if (!PHYSFS_exists("gamedesc.lev"))
 			{
-				// Program dir
-				registerSearchPath(PHYSFS_getBaseDir(), 5);
-				rebuildSearchPath(mod_multiplay, true);
+				// Guessed fallback default datadir on Unix
+				std::string wzDataDir = WZ_DATADIR;
+				if(!wzDataDir.empty())
+				{
+				#ifndef WZ_DATADIR_ISABSOLUTE
+					// Treat WZ_DATADIR as a relative path - append to the install PREFIX
+					tmpstr = prefix + dirSeparator + wzDataDir;
+					registerSearchPath(tmpstr.c_str(), 5);
+					rebuildSearchPath(mod_multiplay, true);
+				#else
+					// Treat WZ_DATADIR as an absolute path, and use directly
+					registerSearchPath(wzDataDir.c_str(), 5);
+					rebuildSearchPath(mod_multiplay, true);
+				#endif
+				}
 
 				if (!PHYSFS_exists("gamedesc.lev"))
 				{
-					// Guessed fallback default datadir on Unix
-					std::string wzDataDir = WZ_DATADIR;
-					if(!wzDataDir.empty())
-					{
-					#ifndef WZ_DATADIR_ISABSOLUTE
-						// Treat WZ_DATADIR as a relative path - append to the install PREFIX
-						tmpstr = prefix + dirSeparator + wzDataDir;
-						registerSearchPath(tmpstr.c_str(), 6);
-						rebuildSearchPath(mod_multiplay, true);
-					#else
-						// Treat WZ_DATADIR as an absolute path, and use directly
-						registerSearchPath(wzDataDir.c_str(), 6);
-						rebuildSearchPath(mod_multiplay, true);
-					#endif
-					}
+					// Relocation for AutoPackage (<prefix>/share/warzone2100/)
+					tmpstr = prefix + dirSeparator + "share" + dirSeparator + "warzone2100" + dirSeparator;
+					registerSearchPath(tmpstr.c_str(), 6);
+					rebuildSearchPath(mod_multiplay, true);
 
 					if (!PHYSFS_exists("gamedesc.lev"))
 					{
@@ -736,7 +752,7 @@ static void scanDataDirs()
 
 	if (PHYSFS_exists("gamedesc.lev"))
 	{
-		debug(LOG_WZ, "gamedesc.lev found at %s", PHYSFS_getRealDir("gamedesc.lev"));
+		debug(LOG_WZ, "gamedesc.lev found at %s", WZ_PHYSFS_getRealDir_String("gamedesc.lev").c_str());
 	}
 	else
 	{
@@ -814,6 +830,8 @@ static void stopTitleLoop()
 static void startGameLoop()
 {
 	SetGameMode(GS_NORMAL);
+
+	ActivityManager::instance().startingGame();
 
 	// Not sure what aLevelName is, in relation to game.map. But need to use aLevelName here, to be able to start the right map for campaign, and need game.hash, to start the right non-campaign map, if there are multiple identically named maps.
 	if (!levLoadData(aLevelName, &game.hash, nullptr, GTYPE_SCENARIO_START))
@@ -900,6 +918,7 @@ static bool initSaveGameLoad()
 	// NOTE: always setGameMode correctly before *any* loading routines!
 	SetGameMode(GS_NORMAL);
 	screen_RestartBackDrop();
+
 	// load up a save game
 	if (!loadGameInit(saveGameName))
 	{
@@ -914,6 +933,8 @@ static bool initSaveGameLoad()
 		SetGameMode(GS_TITLE_SCREEN);
 		return false;
 	}
+
+	ActivityManager::instance().startingSavedGame();
 
 	screen_StopBackDrop();
 	closeLoadingScreen();
@@ -945,6 +966,7 @@ static void runGameLoop()
 		break;
 	case GAMECODE_QUITGAME:
 		debug(LOG_MAIN, "GAMECODE_QUITGAME");
+		ActivityManager::instance().quitGame(collectEndGameStatsData(), Cheated);
 		stopGameLoop();
 		startTitleLoop(); // Restart into titleloop
 		break;
@@ -1034,6 +1056,8 @@ void mainLoop()
 		inputLoseFocus();		// remove it from input stream
 	}
 
+	wzSetCursor(CURSOR_DEFAULT); // if cursor isn't set by anything in the mainLoop, it should revert to default.
+
 	if (NetPlay.bComms || focusState == FOCUS_IN || !war_GetPauseOnFocusLoss())
 	{
 		if (loop_GetVideoStatus())
@@ -1054,7 +1078,11 @@ void mainLoop()
 		realTimeUpdate(); // Update realTime.
 	}
 
+	wzApplyCursor();
 	runNotifications();
+#if defined(ENABLE_DISCORD)
+	discordRPCPerFrame();
+#endif
 }
 
 bool getUTF8CmdLine(int *const utfargc WZ_DECL_UNUSED, char *** const utfargv WZ_DECL_UNUSED) // explicitely pass by reference
@@ -1103,6 +1131,131 @@ bool getUTF8CmdLine(int *const utfargc WZ_DECL_UNUSED, char *** const utfargv WZ
 	return true;
 }
 
+#if defined(WZ_OS_WIN)
+
+#include <ntverp.h>				// Windows SDK - include for access to VER_PRODUCTBUILD
+#if VER_PRODUCTBUILD >= 9200
+	// 9200 is the Windows SDK 8.0 (which introduced family support)
+	#include <winapifamily.h>	// Windows SDK
+#else
+	// Earlier SDKs don't have the concept of families - provide simple implementation
+	// that treats everything as "desktop"
+	#define WINAPI_PARTITION_DESKTOP			0x00000001
+	#define WINAPI_FAMILY_PARTITION(Partition)	((WINAPI_PARTITION_DESKTOP & Partition) == Partition)
+#endif
+
+typedef BOOL (WINAPI *SetDefaultDllDirectoriesFunction)(
+  DWORD DirectoryFlags
+);
+#if !defined(LOAD_LIBRARY_SEARCH_APPLICATION_DIR)
+# define LOAD_LIBRARY_SEARCH_APPLICATION_DIR	0x00000200
+#endif
+#if !defined(LOAD_LIBRARY_SEARCH_DEFAULT_DIRS)
+# define LOAD_LIBRARY_SEARCH_DEFAULT_DIRS		0x00001000
+#endif
+#if !defined(LOAD_LIBRARY_SEARCH_SYSTEM32)
+# define LOAD_LIBRARY_SEARCH_SYSTEM32			0x00000800
+#endif
+
+typedef BOOL (WINAPI *SetDllDirectoryWFunction)(
+  LPCWSTR lpPathName
+);
+
+typedef BOOL (WINAPI *SetSearchPathModeFunction)(
+  DWORD Flags
+);
+#if !defined(BASE_SEARCH_PATH_ENABLE_SAFE_SEARCHMODE)
+# define BASE_SEARCH_PATH_ENABLE_SAFE_SEARCHMODE	0x00000001
+#endif
+#if !defined(BASE_SEARCH_PATH_PERMANENT)
+# define BASE_SEARCH_PATH_PERMANENT					0x00008000
+#endif
+
+typedef BOOL (WINAPI *SetProcessDEPPolicyFunction)(
+  DWORD dwFlags
+);
+#if !defined(PROCESS_DEP_ENABLE)
+# define PROCESS_DEP_ENABLE		0x00000001
+#endif
+
+void osSpecificFirstChanceProcessSetup_Win()
+{
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+	HMODULE hKernel32 = GetModuleHandleW(L"kernel32");
+
+	SetDefaultDllDirectoriesFunction _SetDefaultDllDirectories = reinterpret_cast<SetDefaultDllDirectoriesFunction>(reinterpret_cast<void*>(GetProcAddress(hKernel32, "SetDefaultDllDirectories")));
+
+	if (_SetDefaultDllDirectories)
+	{
+		// Use SetDefaultDllDirectories to limit directories to search
+		_SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_APPLICATION_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32);
+	}
+
+	SetDllDirectoryWFunction _SetDllDirectoryW = reinterpret_cast<SetDllDirectoryWFunction>(reinterpret_cast<void*>(GetProcAddress(hKernel32, "SetDllDirectoryW")));
+
+	if (_SetDllDirectoryW)
+	{
+		// Remove the current working directory from the default DLL search order
+		_SetDllDirectoryW(L"");
+	}
+
+	SetSearchPathModeFunction _SetSearchPathMode = reinterpret_cast<SetSearchPathModeFunction>(reinterpret_cast<void*>(GetProcAddress(hKernel32, "SetSearchPathMode")));
+	if (_SetSearchPathMode)
+	{
+		// Enable safe search mode for the process
+		_SetSearchPathMode(BASE_SEARCH_PATH_ENABLE_SAFE_SEARCHMODE | BASE_SEARCH_PATH_PERMANENT);
+	}
+#endif /* WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP) */
+
+    // Enable heap terminate-on-corruption.
+    // A correct application can continue to run even if this call fails,
+    // so it is safe to ignore the return value and call the function as follows:
+    // (void)HeapSetInformation(NULL, HeapEnableTerminationOnCorruption, NULL, 0);
+    //
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+	typedef BOOL (WINAPI *HSI)
+		   (HANDLE, HEAP_INFORMATION_CLASS, PVOID, SIZE_T);
+	HSI pHsi = reinterpret_cast<HSI>(reinterpret_cast<void*>(GetProcAddress(hKernel32, "HeapSetInformation")));
+	if (pHsi)
+	{
+		#ifndef HeapEnableTerminationOnCorruption
+		#   define HeapEnableTerminationOnCorruption (HEAP_INFORMATION_CLASS)1
+		#endif
+
+		(void)((pHsi)(NULL, HeapEnableTerminationOnCorruption, NULL, 0));
+	}
+#else
+	(void)HeapSetInformation(NULL, HeapEnableTerminationOnCorruption, NULL, 0);
+#endif /* WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP) */
+
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+	SetProcessDEPPolicyFunction _SetProcessDEPPolicy = reinterpret_cast<SetProcessDEPPolicyFunction>(reinterpret_cast<void*>(GetProcAddress(hKernel32, "SetProcessDEPPolicy")));
+	if (_SetProcessDEPPolicy)
+	{
+		// Ensure DEP is enabled
+		_SetProcessDEPPolicy(PROCESS_DEP_ENABLE);
+	}
+#endif /* WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP) */
+}
+#endif /* defined(WZ_OS_WIN) */
+
+void osSpecificFirstChanceProcessSetup()
+{
+#if defined(WZ_OS_WIN)
+	osSpecificFirstChanceProcessSetup_Win();
+#elif defined(WZ_OS_UNIX)
+	// Before anything else is run, and before creating any threads, ignore SIGPIPE
+	// see: https://curl.haxx.se/libcurl/c/CURLOPT_NOSIGNAL.html
+	struct sigaction sa;
+	sigemptyset(&sa.sa_mask);
+	sa.sa_handler = SIG_IGN;
+	sa.sa_flags = 0;
+	ignoredSIGPIPE = sigaction(SIGPIPE, &sa, 0) == 0;
+#else
+	// currently, no-op
+#endif
+}
+
 // for backend detection
 extern const char *BACKEND;
 
@@ -1110,6 +1263,9 @@ int realmain(int argc, char *argv[])
 {
 	int utfargc = argc;
 	char **utfargv = (char **)argv;
+
+	osSpecificFirstChanceProcessSetup();
+
 	wzMain(argc, argv);		// init Qt integration first
 
 	debug_init();
@@ -1126,7 +1282,18 @@ int realmain(int argc, char *argv[])
 		return EXIT_FAILURE;
 	}
 
+	LaunchInfo::initialize(argc, argv);
 	setupExceptionHandler(utfargc, utfargv, version_getFormattedVersionString(), version_getVersionedAppDirFolderName(), isPortableMode());
+
+	/*** Initialize sodium library ***/
+	if (sodium_init() < 0) {
+        /* libsodium couldn't be initialized - it is not safe to use */
+		fprintf(stderr, "Failed to initialize libsodium\n");
+		return EXIT_FAILURE;
+    }
+
+	/*** Initialize URL Request library ***/
+	urlRequestInit();
 
 	/*** Initialize PhysicsFS ***/
 	initialize_PhysicsFS(utfargv[0]);
@@ -1215,6 +1382,10 @@ int realmain(int argc, char *argv[])
 	debug(LOG_MEMORY, "sizeof: SIMPLE_OBJECT=%ld, BASE_OBJECT=%ld, DROID=%ld, STRUCTURE=%ld, FEATURE=%ld, PROJECTILE=%ld",
 	      (long)sizeof(SIMPLE_OBJECT), (long)sizeof(BASE_OBJECT), (long)sizeof(DROID), (long)sizeof(STRUCTURE), (long)sizeof(FEATURE), (long)sizeof(PROJECTILE));
 
+#if defined(WZ_OS_UNIX)
+	debug(LOG_WZ, "Ignoring SIGPIPE: %s", (ignoredSIGPIPE) ? "true" : "false");
+#endif
+	urlRequestOutputDebugInfo();
 
 	/* Put in the writedir root */
 	sstrcpy(KeyMapPath, "keymap.json");
@@ -1263,7 +1434,7 @@ int realmain(int argc, char *argv[])
 			}
 			else
 			{
-				info("global mod \"%s\" is enabled", iterator->c_str());
+				wz_info("global mod \"%s\" is enabled", iterator->c_str());
 				++iterator;
 			}
 		}
@@ -1284,7 +1455,7 @@ int realmain(int argc, char *argv[])
 			}
 			else
 			{
-				info("campaign mod \"%s\" is enabled", iterator->c_str());
+				wz_info("campaign mod \"%s\" is enabled", iterator->c_str());
 				++iterator;
 			}
 		}
@@ -1305,14 +1476,17 @@ int realmain(int argc, char *argv[])
 			}
 			else
 			{
-				info("multiplay mod \"%s\" is enabled", iterator->c_str());
+				wz_info("multiplay mod \"%s\" is enabled", iterator->c_str());
 				++iterator;
 			}
 		}
 	}
 
-	if (!wzMainScreenSetup(war_getAntialiasing(), war_getFullscreen(), war_GetVsync()))
+	ActivityManager::instance().initialize();
+
+	if (!wzMainScreenSetup(war_getGfxBackend(), war_getAntialiasing(), war_getFullscreen(), war_GetVsync()))
 	{
+		saveConfig(); // ensure any setting changes are persisted on failure
 		return EXIT_FAILURE;
 	}
 
@@ -1391,12 +1565,37 @@ int realmain(int argc, char *argv[])
 		break;
 	}
 
+	WzInfoManager::initialize();
+#if defined(ENABLE_DISCORD)
+	discordRPCInitialize();
+#endif
+
 #if defined(WZ_CC_MSVC) && defined(DEBUG)
 	debug_MEMSTATS();
 #endif
 	debug(LOG_MAIN, "Entering main loop");
 	wzMainEventLoop();
+	ActivityManager::instance().preSystemShutdown();
+
+	switch (GetGameMode())
+	{
+		case GS_NORMAL:
+			// if running a game while quitting, stop the game loop
+			// (currently required for some cleanup) (should modelShutdown() be added to systemShutdown?)
+			stopGameLoop();
+			break;
+		case GS_TITLE_SCREEN:
+			// if showing the title / menus while quitting, stop the title loop
+			// (currently required for some cleanup)
+			stopTitleLoop();
+			break;
+		default:
+			break;
+	}
 	saveConfig();
+#if defined(ENABLE_DISCORD)
+	discordRPCShutdown();
+#endif
 	systemShutdown();
 #ifdef WZ_OS_WIN	// clean up the memory allocated for the command line conversion
 	for (int i = 0; i < argc; i++)
@@ -1406,7 +1605,9 @@ int realmain(int argc, char *argv[])
 	}
 	free(utfargv);
 #endif
+	ActivityManager::instance().shutdown();
 	wzShutdown();
+	urlRequestShutdown();
 	debug(LOG_MAIN, "Completed shutting down Warzone 2100");
 	return EXIT_SUCCESS;
 }

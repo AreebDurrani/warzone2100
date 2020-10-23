@@ -187,6 +187,7 @@ enum code_part
 	LOG_INPUT,	// mouse / keyboard events
 	LOG_POPUP,	// special, on by default, for both debug & release builds (used for OS dependent popup code)
 	LOG_CONSOLE,	// send console messages to file
+	LOG_ACTIVITY,
 	LOG_LAST /**< _must_ be last! */
 };
 
@@ -254,7 +255,7 @@ void debug_callback_win32debug(void **data, const char *outputBuffer);
  */
 bool debug_enable_switch(const char *str);
 // macro for always outputting informational responses on both debug & release builds
-#define info(...) do { _debug(__LINE__, LOG_INFO, __FUNCTION__, __VA_ARGS__); } while(0)
+#define wz_info(...) do { _debug(__LINE__, LOG_INFO, __FUNCTION__, __VA_ARGS__); } while(0)
 /**
  * Output printf style format str with additional arguments.
  *

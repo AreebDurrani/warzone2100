@@ -51,8 +51,19 @@ uint32_t crcSumU16(uint32_t crc, const uint16_t *data, size_t dataLen)
 {
 	while (dataLen-- > 0)
 	{
-		crc = crc << 8 ^ crcTable[crc>>24 ^ (uint8_t)(*data >> 8)];
-		crc = crc << 8 ^ crcTable[crc>>24 ^ (uint8_t) * data++];
+		crc = crc << 8 ^ crcTable[crc>>24 ^ uint8_t(*data >> 8)];
+		crc = crc << 8 ^ crcTable[crc>>24 ^ uint8_t(*data++)];
+	}
+
+	return crc;
+}
+
+uint32_t crcSumI16(uint32_t crc, const int16_t *data, size_t dataLen)
+{
+	while (dataLen-- > 0)
+	{
+		crc = crc << 8 ^ crcTable[crc>>24 ^ uint8_t(*data >> 8)];
+		crc = crc << 8 ^ crcTable[crc>>24 ^ uint8_t(*data++)];
 	}
 
 	return crc;
@@ -79,23 +90,26 @@ uint32_t crcSumVector2i(uint32_t crc, const Vector2i *data, size_t dataLen)
 // MARK: - SHA256
 //================================================================================
 
-#include <sha/sha2.h>
+#include <sodium.h>
+#include <climits>
 Sha256 sha256Sum(void const *data, size_t dataLen)
 {
-	static_assert(Sha256::Bytes == SHA256_DIGEST_SIZE, "Size mismatch.");
+	static_assert(Sha256::Bytes == crypto_hash_sha256_BYTES, "Size mismatch.");
 
 	Sha256 ret;
-	if (dataLen > std::numeric_limits<unsigned long>::max())
+#if SIZE_MAX > ULLONG_MAX
+	if (dataLen > std::numeric_limits<unsigned long long>::max())
 	{
-		debug(LOG_FATAL, "Attempting to calculate SHA256 on data length exceeding std::numeric_limits<unsigned long>::max()=(%lu)", std::numeric_limits<unsigned long>::max());
+		debug(LOG_FATAL, "Attempting to calculate SHA256 on data length exceeding std::numeric_limits<unsigned long long>::max()=(%llu)", std::numeric_limits<unsigned long long>::max());
 		ret.setZero();
 		return ret;
 	}
+#endif
 
-	sha256_ctx ctx[1];
-	sha256_begin(ctx);
-	sha256_hash((const unsigned char *)data, dataLen, ctx);
-	sha256_end(ret.bytes, ctx);
+	crypto_hash_sha256_state state;
+	crypto_hash_sha256_init(&state);
+	crypto_hash_sha256_update(&state, (const unsigned char *)data, dataLen);
+	crypto_hash_sha256_final(&state, ret.bytes);
 	return ret;
 }
 
@@ -792,6 +806,13 @@ EcKey EcKey::generate()
 	ret.vKey = (void *)key;
 	return ret;
 }
+
+std::string EcKey::publicHashString() const
+{
+	auto bytes = toBytes(EcKey::Public);
+	return bytes.empty()? std::string{} : sha256Sum(&bytes[0], bytes.size()).toString().substr(0, 20).c_str();
+}
+
 
 //================================================================================
 // MARK: - Base64

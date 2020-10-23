@@ -79,6 +79,7 @@
 #include "qtscript.h"
 #include "multigifts.h"
 #include "loadsave.h"
+#include "game.h"
 
 /*
 	KeyBind.c
@@ -134,7 +135,7 @@ void kf_AutoGame()
 		return;
 	}
 #endif
-	if (game.type == CAMPAIGN)
+	if (game.type == LEVEL_TYPE::CAMPAIGN)
 	{
 		CONPRINTF("%s", "Not possible with the campaign!");
 		return;
@@ -364,7 +365,6 @@ void	kf_DebugDroidInfo()
 void kf_CloneSelected(int limit)
 {
 	DROID_TEMPLATE	*sTemplate = nullptr;
-	char *msg;
 #ifndef DEBUG
 	// Bail out if we're running a _true_ multiplayer game (to prevent MP cheating)
 	if (runningMultiplayer())
@@ -408,8 +408,8 @@ void kf_CloneSelected(int limit)
 					debug(LOG_ERROR, "Cloning has failed for template:%s id:%d", getID(sTemplate), sTemplate->multiPlayerID);
 				}
 			}
-			sasprintf(&msg, _("Player %u is cheating a new droid army of: %d × %s."), selectedPlayer, limit, psDroid->aName);
-			sendTextMessage(msg, true);
+			std::string msg = astringf(_("Player %u is cheating a new droid army of: %d × %s."), selectedPlayer, limit, psDroid->aName);
+			sendTextMessage(msg.c_str(), true);
 			Cheated = true;
 			audio_PlayTrack(ID_SOUND_NEXUS_LAUGH1);
 			return;
@@ -496,8 +496,6 @@ void kf_ToggleTeamChat()
 // --------------------------------------------------------------------------
 void	kf_BifferBaker()
 {
-	char *cmsg;
-
 	// Bail out if we're running a _true_ multiplayer game (to prevent MP cheating)
 	if (runningMultiplayer())
 	{
@@ -507,9 +505,9 @@ void	kf_BifferBaker()
 
 	// player deals far more damage, and the enemy far less
 	setDamageModifiers(999, 1);
-	sasprintf(&cmsg, _("(Player %u) is using cheat :%s"),
+	std::string cmsg = astringf(_("(Player %u) is using cheat :%s"),
 	          selectedPlayer, _("Hard as nails!!!"));
-	sendTextMessage(cmsg, true);
+	sendTextMessage(cmsg.c_str(), true);
 }
 // --------------------------------------------------------------------------
 void	kf_SetEasyLevel()
@@ -528,8 +526,6 @@ void	kf_SetEasyLevel()
 // --------------------------------------------------------------------------
 void	kf_UpThePower()
 {
-	char *cmsg;
-
 	// Bail out if we're running a _true_ multiplayer game (to prevent MP cheating)
 	if (runningMultiplayer())
 	{
@@ -537,16 +533,14 @@ void	kf_UpThePower()
 		return;
 	}
 	addPower(selectedPlayer, 1000);
-	sasprintf(&cmsg, _("(Player %u) is using cheat :%s"),
+	std::string cmsg = astringf(_("(Player %u) is using cheat :%s"),
 	          selectedPlayer, _("1000 big ones!!!"));
-	sendTextMessage(cmsg, true);
+	sendTextMessage(cmsg.c_str(), true);
 }
 
 // --------------------------------------------------------------------------
 void	kf_MaxPower()
 {
-	char *cmsg;
-
 	// Bail out if we're running a _true_ multiplayer game (to prevent MP cheating)
 	if (runningMultiplayer())
 	{
@@ -554,9 +548,9 @@ void	kf_MaxPower()
 		return;
 	}
 	setPower(selectedPlayer, 100000);
-	sasprintf(&cmsg, _("(Player %u) is using cheat :%s"),
+	std::string cmsg = astringf(_("(Player %u) is using cheat :%s"),
 	          selectedPlayer, _("Power overwhelming"));
-	sendTextMessage(cmsg, true);
+	sendTextMessage(cmsg.c_str(), true);
 }
 
 // --------------------------------------------------------------------------
@@ -588,8 +582,6 @@ void	kf_SetHardLevel()
 // --------------------------------------------------------------------------
 void	kf_DoubleUp()
 {
-	char *cmsg;
-
 	// Bail out if we're running a _true_ multiplayer game (to prevent MP cheating)
 	if (runningMultiplayer())
 	{
@@ -597,9 +589,9 @@ void	kf_DoubleUp()
 		return;
 	}
 	setDamageModifiers(100, 50); // enemy damage halved
-	sasprintf(&cmsg, _("(Player %u) is using cheat :%s"),
+	std::string cmsg = astringf(_("(Player %u) is using cheat :%s"),
 	          selectedPlayer, _("Twice as nice!"));
-	sendTextMessage(cmsg, true);
+	sendTextMessage(cmsg.c_str(), true);
 }
 // --------------------------------------------------------------------------
 void kf_ToggleFPS() //This shows *just FPS* and is always visible (when active) -Q.
@@ -614,6 +606,20 @@ void kf_ToggleFPS() //This shows *just FPS* and is always visible (when active) 
 	else
 	{
 		CONPRINTF("%s", _("FPS display is disabled."));
+	}
+}
+void kf_ToggleUnitCount()		// Display units built / lost / produced counter
+{
+	// Toggle the boolean value of showUNITCOUNT
+	showUNITCOUNT = !showUNITCOUNT;
+
+	if (showUNITCOUNT)
+	{
+		CONPRINTF("%s", _("Unit count display is enabled."));
+	}
+	else
+	{
+		CONPRINTF("%s", _("Unit count display is disabled."));
 	}
 }
 void kf_ToggleSamples() //Displays number of sound sample in the sound queues & lists.
@@ -656,7 +662,6 @@ void	kf_FrameRate()
 void kf_ShowNumObjects()
 {
 	int droids, structures, features;
-	char *cmsg;
 
 	// Bail out if we're running a _true_ multiplayer game (to prevent MP cheating)
 	if (runningMultiplayer())
@@ -666,9 +671,9 @@ void kf_ShowNumObjects()
 	}
 
 	objCount(&droids, &structures, &features);
-	sasprintf(&cmsg, _("(Player %u) is using a cheat :Num Droids: %d  Num Structures: %d  Num Features: %d"),
+	std::string cmsg = astringf(_("(Player %u) is using a cheat :Num Droids: %d  Num Structures: %d  Num Features: %d"),
 	          selectedPlayer, droids, structures, features);
-	sendTextMessage(cmsg, true);
+	sendTextMessage(cmsg.c_str(), true);
 }
 
 // --------------------------------------------------------------------------
@@ -684,8 +689,6 @@ void	kf_ToggleRadar()
 /* Toggles infinite power on/off */
 void	kf_TogglePower()
 {
-	char *cmsg;
-
 #ifndef DEBUG
 	// Bail out if we're running a _true_ multiplayer game (to prevent MP cheating)
 	if (runningMultiplayer())
@@ -701,9 +704,9 @@ void	kf_TogglePower()
 		powerCalc(true);
 	}
 
-	sasprintf(&cmsg, _("(Player %u) is using cheat :%s"),
+	std::string cmsg = astringf(_("(Player %u) is using cheat :%s"),
 	          selectedPlayer, powerCalculated ? _("Infinite power disabled") : _("Infinite power enabled"));
-	sendTextMessage(cmsg, true);
+	sendTextMessage(cmsg.c_str(), true);
 }
 
 // --------------------------------------------------------------------------
@@ -728,8 +731,6 @@ void	kf_ScreenDump()
 /* Make all functions available */
 void	kf_AllAvailable()
 {
-	char *cmsg;
-
 #ifndef DEBUG
 	// Bail out if we're running a _true_ multiplayer game (to prevent MP cheating)
 	if (runningMultiplayer())
@@ -740,9 +741,9 @@ void	kf_AllAvailable()
 #endif
 
 	makeAllAvailable();
-	sasprintf(&cmsg, _("(Player %u) is using cheat :%s"),
+	std::string cmsg = astringf(_("(Player %u) is using cheat :%s"),
 	          selectedPlayer, _("All items made available"));
-	sendTextMessage(cmsg, true);
+	sendTextMessage(cmsg.c_str(), true);
 }
 
 // --------------------------------------------------------------------------
@@ -773,7 +774,6 @@ void	kf_TileInfo()
 void	kf_ToggleFog()
 {
 	static bool fogEnabled = false;
-	char *cmsg;
 
 #ifndef DEBUG
 	// Bail out if we're running a _true_ multiplayer game (to prevent MP cheating)
@@ -796,9 +796,9 @@ void	kf_ToggleFog()
 		pie_EnableFog(fogEnabled);
 	}
 
-	sasprintf(&cmsg, _("(Player %u) is using cheat :%s"),
+	std::string cmsg = astringf(_("(Player %u) is using cheat :%s"),
 	          selectedPlayer, fogEnabled ? _("Fog on") : _("Fog off"));
-	sendTextMessage(cmsg, true);
+	sendTextMessage(cmsg.c_str(), true);
 }
 
 // --------------------------------------------------------------------------
@@ -863,39 +863,10 @@ void	kf_LowerTile()
 }
 
 // --------------------------------------------------------------------------
-
-/* Quick game exit */
-void	kf_SystemClose()
-{
-
-}
-
-// --------------------------------------------------------------------------
 /* Zooms out from display */
-void	kf_ZoomOut()
+void kf_ZoomOut()
 {
-	if (getDebugMappingStatus())
-	{
-		setViewDistance(getViewDistance() + realTimeAdjustedIncrement(war_GetMapZoomRate()));
-	}
-	else
-	{
-		setViewDistance(std::min<int>(getViewDistance() + realTimeAdjustedIncrement(war_GetMapZoomRate()), MAXDISTANCE));
-	}
-	UpdateFogDistance(getViewDistance());
-}
-
-void kf_ZoomOutStep()
-{
-	if (getDebugMappingStatus())
-	{
-		setViewDistance(getViewDistance() + war_GetMapZoomRate());
-	}
-	else
-	{
-		setViewDistance(std::min<int>(getViewDistance() + war_GetMapZoomRate(), MAXDISTANCE));
-	}
-	UpdateFogDistance(getViewDistance());
+	incrementViewDistance(war_GetMapZoomRate());
 }
 
 // --------------------------------------------------------------------------
@@ -927,30 +898,9 @@ void	kf_RadarZoomOut()
 // --------------------------------------------------------------------------
 // --------------------------------------------------------------------------
 /* Zooms in the map */
-void	kf_ZoomIn()
+void kf_ZoomIn()
 {
-	if (getDebugMappingStatus())
-	{
-		setViewDistance(getViewDistance() - realTimeAdjustedIncrement(war_GetMapZoomRate()));
-	}
-	else
-	{
-		setViewDistance(std::max<int>(getViewDistance() - realTimeAdjustedIncrement(war_GetMapZoomRate()), MINDISTANCE));
-	}
-	UpdateFogDistance(getViewDistance());
-}
-
-void kf_ZoomInStep()
-{
-	if (getDebugMappingStatus())
-	{
-		setViewDistance(getViewDistance() - war_GetMapZoomRate());
-	}
-	else
-	{
-		setViewDistance(std::max<int>(getViewDistance() - war_GetMapZoomRate(), MINDISTANCE));
-	}
-	UpdateFogDistance(getViewDistance());
+	incrementViewDistance(-war_GetMapZoomRate());
 }
 
 // --------------------------------------------------------------------------
@@ -1018,6 +968,20 @@ void	kf_RotateRight()
 	{
 		player.r.y += DEG(360);
 	}
+}
+
+// --------------------------------------------------------------------------
+/* Rotate editing building direction clockwise */
+void kf_RotateBuildingCW()
+{
+	incrementBuildingDirection(DEG(-90));
+}
+
+// --------------------------------------------------------------------------
+/* Rotate editing building direction anticlockwise */
+void kf_RotateBuildingACW()
+{
+	incrementBuildingDirection(DEG(90));
 }
 
 // --------------------------------------------------------------------------
@@ -1157,7 +1121,10 @@ void	kf_SelectGrouping(UDWORD	groupNumber)
 		kf_SelectGrouping(x); \
 	} \
 	void	kf_AssignGrouping_##x( void ) { \
-		assignDroidsToGroup(selectedPlayer, x); \
+		assignDroidsToGroup(selectedPlayer, x, true); \
+	} \
+	void	kf_AddGrouping_##x( void ) { \
+		assignDroidsToGroup(selectedPlayer, x, false); \
 	} \
 	void	kf_SelectCommander_##x( void ) { \
 		selCommander(x); \
@@ -1210,17 +1177,6 @@ void	kf_addMultiMenu()
 }
 
 // --------------------------------------------------------------------------
-// start/stop capturing audio for multiplayer
-
-void kf_multiAudioStart()
-{
-}
-
-void kf_multiAudioStop()
-{
-}
-
-// --------------------------------------------------------------------------
 
 void	kf_JumpToMapMarker()
 {
@@ -1257,7 +1213,6 @@ void	kf_ToggleDebugMappings()
 
 void	kf_ToggleGodMode()
 {
-	char *cmsg;
 	static bool pastReveal = true;
 
 #ifndef DEBUG
@@ -1307,9 +1262,9 @@ void	kf_ToggleGodMode()
 		setRevealStatus(true); // view the entire map
 	}
 
-	sasprintf(&cmsg, _("(Player %u) is using cheat :%s"),
+	std::string cmsg = astringf(_("(Player %u) is using cheat :%s"),
 	          selectedPlayer, godMode ? _("God Mode ON") : _("God Mode OFF"));
-	sendTextMessage(cmsg, true);
+	sendTextMessage(cmsg.c_str(), true);
 }
 // --------------------------------------------------------------------------
 /* Aligns the view to north - some people can't handle the world spinning */
@@ -1323,14 +1278,29 @@ void	kf_SeekNorth()
 	CONPRINTF("%s", _("View Aligned to North"));
 }
 
+void kf_CameraUp() {
+	scrollDirUpDown += 1;
+}
+
+void kf_CameraDown() {
+	scrollDirUpDown += -1;
+}
+
+void kf_CameraLeft() {
+	scrollDirLeftRight += -1;
+}
+
+void kf_CameraRight() {
+	scrollDirLeftRight += 1;
+}
+
 void kf_toggleTrapCursor()
 {
-	char *msg;
 	bool trap = !war_GetTrapCursor();
 	war_SetTrapCursor(trap);
 	(trap ? wzGrabMouse : wzReleaseMouse)();
-	sasprintf(&msg, _("Trap cursor %s"), trap ? "ON" : "OFF");
-	addConsoleMessage(msg, DEFAULT_JUSTIFY, SYSTEM_MESSAGE);
+	std::string msg = astringf(_("Trap cursor %s"), trap ? "ON" : "OFF");
+	addConsoleMessage(msg.c_str(), DEFAULT_JUSTIFY, SYSTEM_MESSAGE);
 }
 
 
@@ -1387,7 +1357,6 @@ void	kf_TogglePauseMode()
 void	kf_FinishAllResearch()
 {
 	UDWORD	j;
-	char *cmsg;
 
 #ifndef DEBUG
 	// Bail out if we're running a _true_ multiplayer game (to prevent MP cheating)
@@ -1414,9 +1383,9 @@ void	kf_FinishAllResearch()
 			}
 		}
 	}
-	sasprintf(&cmsg, _("(Player %u) is using cheat :%s"),
+	std::string cmsg = astringf(_("(Player %u) is using cheat :%s"),
 	          selectedPlayer, _("Researched EVERYTHING for you!"));
-	sendTextMessage(cmsg, true);
+	sendTextMessage(cmsg.c_str(), true);
 }
 
 void kf_Reload()
@@ -1449,7 +1418,6 @@ void kf_Reload()
 void	kf_FinishResearch()
 {
 	STRUCTURE	*psCurr;
-	char *cmsg;
 
 #ifndef DEBUG
 	// Bail out if we're running a _true_ multiplayer game (to prevent MP cheating)
@@ -1480,8 +1448,8 @@ void	kf_FinishResearch()
 				{
 					researchResult(rindex, selectedPlayer, true, psCurr, true);
 				}
-				sasprintf(&cmsg, _("(Player %u) is using cheat :%s %s"), selectedPlayer, _("Researched"), getName(pSubject));
-				sendTextMessage(cmsg, true);
+				std::string cmsg = astringf(_("(Player %u) is using cheat :%s %s"), selectedPlayer, _("Researched"), getName(pSubject));
+				sendTextMessage(cmsg.c_str(), true);
 				intResearchFinished(psCurr);
 			}
 		}
@@ -1517,11 +1485,9 @@ void	kf_ToggleEnergyBars()
 // --------------------------------------------------------------------------
 void	kf_ChooseOptions()
 {
-	char *cmsg;
-
-	sasprintf(&cmsg, _("(Player %u) is using cheat :%s"),
+	std::string cmsg = astringf(_("(Player %u) is using cheat :%s"),
 	          selectedPlayer, _("Debug menu is Open"));
-	sendTextMessage(cmsg, true);
+	sendTextMessage(cmsg.c_str(), true);
 	jsShowDebug();
 }
 
@@ -1533,8 +1499,6 @@ void	kf_ToggleProximitys()
 // --------------------------------------------------------------------------
 void	kf_JumpToResourceExtractor()
 {
-	int xJump, yJump;
-
 	if (psOldRE && (STRUCTURE *)psOldRE->psNextFunc)
 	{
 		psOldRE = psOldRE->psNextFunc;
@@ -1546,10 +1510,6 @@ void	kf_JumpToResourceExtractor()
 
 	if (psOldRE)
 	{
-		xJump = psOldRE->pos.x;
-		yJump = psOldRE->pos.y;
-		player.p.x = xJump;
-		player.p.z = yJump;
 		player.r.y = 0; // face north
 		setViewPos(map_coord(psOldRE->pos.x), map_coord(psOldRE->pos.y), true);
 	}
@@ -1740,7 +1700,7 @@ void	kf_SelectNextFactory()
 {
 	STRUCTURE	*psCurr;
 
-	selNextSpecifiedBuilding(REF_FACTORY);
+	selNextSpecifiedBuilding(REF_FACTORY, false);
 
 	//deselect factories of other types
 	for (psCurr = apsStructLists[selectedPlayer]; psCurr; psCurr = psCurr->psNext)
@@ -1763,7 +1723,7 @@ void	kf_SelectNextFactory()
 // --------------------------------------------------------------------------
 void	kf_SelectNextResearch()
 {
-	selNextSpecifiedBuilding(REF_RESEARCH);
+	selNextSpecifiedBuilding(REF_RESEARCH, false);
 	if (intCheckReticuleButEnabled(IDRET_RESEARCH))
 	{
 		setKeyButtonMapping(IDRET_RESEARCH);
@@ -1774,7 +1734,7 @@ void	kf_SelectNextResearch()
 // --------------------------------------------------------------------------
 void	kf_SelectNextPowerStation()
 {
-	selNextSpecifiedBuilding(REF_POWER_GEN);
+	selNextSpecifiedBuilding(REF_POWER_GEN, false);
 	triggerEventSelected();
 }
 
@@ -1783,7 +1743,7 @@ void	kf_SelectNextCyborgFactory()
 {
 	STRUCTURE	*psCurr;
 
-	selNextSpecifiedBuilding(REF_CYBORG_FACTORY);
+	selNextSpecifiedBuilding(REF_CYBORG_FACTORY, false);
 
 	//deselect factories of other types
 	for (psCurr = apsStructLists[selectedPlayer]; psCurr; psCurr = psCurr->psNext)
@@ -1804,6 +1764,124 @@ void	kf_SelectNextCyborgFactory()
 }
 
 // --------------------------------------------------------------------------
+void	kf_SelectNextVTOLFactory()
+{
+	STRUCTURE	*psCurr;
+
+	selNextSpecifiedBuilding(REF_VTOL_FACTORY, false);
+
+	//deselect factories of other types
+	for (psCurr = apsStructLists[selectedPlayer]; psCurr; psCurr = psCurr->psNext)
+	{
+		if (psCurr->selected &&
+		    ((psCurr->pStructureType->type == REF_FACTORY) ||
+		     (psCurr->pStructureType->type == REF_CYBORG_FACTORY)))
+		{
+			psCurr->selected = false;
+		}
+	}
+
+	if (intCheckReticuleButEnabled(IDRET_MANUFACTURE))
+	{
+		setKeyButtonMapping(IDRET_MANUFACTURE);
+	}
+	triggerEventSelected();
+}
+
+// --------------------------------------------------------------------------
+void	kf_JumpNextFactory()
+{
+	STRUCTURE	*psCurr;
+
+	selNextSpecifiedBuilding(REF_FACTORY, true);
+
+	//deselect factories of other types
+	for (psCurr = apsStructLists[selectedPlayer]; psCurr; psCurr = psCurr->psNext)
+	{
+		if (psCurr->selected &&
+		    ((psCurr->pStructureType->type == REF_CYBORG_FACTORY) ||
+		     (psCurr->pStructureType->type == REF_VTOL_FACTORY)))
+		{
+			psCurr->selected = false;
+		}
+	}
+
+	if (intCheckReticuleButEnabled(IDRET_MANUFACTURE))
+	{
+		setKeyButtonMapping(IDRET_MANUFACTURE);
+	}
+	triggerEventSelected();
+}
+
+// --------------------------------------------------------------------------
+void	kf_JumpNextResearch()
+{
+	selNextSpecifiedBuilding(REF_RESEARCH, true);
+	if (intCheckReticuleButEnabled(IDRET_RESEARCH))
+	{
+		setKeyButtonMapping(IDRET_RESEARCH);
+	}
+	triggerEventSelected();
+}
+
+// --------------------------------------------------------------------------
+void	kf_JumpNextPowerStation()
+{
+	selNextSpecifiedBuilding(REF_POWER_GEN, true);
+	triggerEventSelected();
+}
+
+// --------------------------------------------------------------------------
+void	kf_JumpNextCyborgFactory()
+{
+	STRUCTURE	*psCurr;
+
+	selNextSpecifiedBuilding(REF_CYBORG_FACTORY, true);
+
+	//deselect factories of other types
+	for (psCurr = apsStructLists[selectedPlayer]; psCurr; psCurr = psCurr->psNext)
+	{
+		if (psCurr->selected &&
+		    ((psCurr->pStructureType->type == REF_FACTORY) ||
+		     (psCurr->pStructureType->type == REF_VTOL_FACTORY)))
+		{
+			psCurr->selected = false;
+		}
+	}
+
+	if (intCheckReticuleButEnabled(IDRET_MANUFACTURE))
+	{
+		setKeyButtonMapping(IDRET_MANUFACTURE);
+	}
+	triggerEventSelected();
+}
+
+// --------------------------------------------------------------------------
+void	kf_JumpNextVTOLFactory()
+{
+	STRUCTURE	*psCurr;
+
+	selNextSpecifiedBuilding(REF_VTOL_FACTORY, true);
+
+	//deselect factories of other types
+	for (psCurr = apsStructLists[selectedPlayer]; psCurr; psCurr = psCurr->psNext)
+	{
+		if (psCurr->selected &&
+		    ((psCurr->pStructureType->type == REF_FACTORY) ||
+		     (psCurr->pStructureType->type == REF_CYBORG_FACTORY)))
+		{
+			psCurr->selected = false;
+		}
+	}
+
+	if (intCheckReticuleButEnabled(IDRET_MANUFACTURE))
+	{
+		setKeyButtonMapping(IDRET_MANUFACTURE);
+	}
+	triggerEventSelected();
+}
+
+// --------------------------------------------------------------------------
 
 
 void	kf_KillEnemy()
@@ -1811,7 +1889,6 @@ void	kf_KillEnemy()
 	UDWORD		player;
 	DROID		*psCDroid, *psNDroid;
 	STRUCTURE	*psCStruct, *psNStruct;
-	char *cmsg;
 
 #ifndef DEBUG
 	// Bail out if we're running a _true_ multiplayer game (to prevent MP cheating)
@@ -1824,9 +1901,9 @@ void	kf_KillEnemy()
 
 	debug(LOG_DEATH, "Destroying enemy droids and structures");
 	CONPRINTF("%s", _("Warning! This can have drastic consequences if used incorrectly in missions."));
-	sasprintf(&cmsg, _("(Player %u) is using cheat :%s"),
+	std::string cmsg = astringf(_("(Player %u) is using cheat :%s"),
 	          selectedPlayer, _("All enemies destroyed by cheating!"));
-	sendTextMessage(cmsg, true);
+	sendTextMessage(cmsg.c_str(), true);
 	Cheated = true;
 
 	for (player = 0; player < MAX_PLAYERS; player++)
@@ -1854,7 +1931,6 @@ void kf_KillSelected()
 {
 	DROID		*psCDroid, *psNDroid;
 	STRUCTURE	*psCStruct, *psNStruct;
-	char *cmsg;
 
 #ifndef DEBUG
 	// Bail out if we're running a _true_ multiplayer game (to prevent MP cheating)
@@ -1865,9 +1941,9 @@ void kf_KillSelected()
 	}
 #endif
 
-	sasprintf(&cmsg, _("(Player %u) is using cheat :%s"),
+	std::string cmsg = astringf(_("(Player %u) is using cheat :%s"),
 	          selectedPlayer, _("Destroying selected droids and structures!"));
-	sendTextMessage(cmsg, true);
+	sendTextMessage(cmsg.c_str(), true);
 
 	debug(LOG_DEATH, "Destroying selected droids and structures");
 	audio_PlayTrack(ID_SOUND_COLL_DIE);
@@ -1935,6 +2011,11 @@ void kf_ShowGridInfo()
 // Chat message. NOTE THIS FUNCTION CAN DISABLE ALL OTHER KEYPRESSES
 void kf_SendTeamMessage()
 {
+	if (!getWidgetsStatus())
+	{
+		return;
+	}
+
 	if (bAllowOtherKeyPresses && !gamePaused())  // just starting.
 	{
 		bAllowOtherKeyPresses = false;
@@ -1952,6 +2033,11 @@ void kf_SendTeamMessage()
 // Chat message. NOTE THIS FUNCTION CAN DISABLE ALL OTHER KEYPRESSES
 void kf_SendGlobalMessage()
 {
+	if (!getWidgetsStatus())
+	{
+		return;
+	}
+
 	if (bAllowOtherKeyPresses && !gamePaused())  // just starting.
 	{
 		bAllowOtherKeyPresses = false;
@@ -2347,13 +2433,6 @@ void	kf_TriggerRayCast()
 //		getBlockHeightDirToEdgeOfGrid(psOther->pos.x,psOther->pos.y,psOther->direction,&height,&dist);
 //		getBlockHeightDirToEdgeOfGrid(mouseTileX*TILE_UNITS,mouseTileY*TILE_UNITS,getTestAngle(),&height,&dist);
 	}
-}
-
-// --------------------------------------------------------------------------
-void	kf_ScatterDroids()
-{
-	// to be written!
-	addConsoleMessage("Scatter droids - not written yet!", LEFT_JUSTIFY, SYSTEM_MESSAGE);
 }
 
 // --------------------------------------------------------------------------

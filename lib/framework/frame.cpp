@@ -141,7 +141,7 @@ bool getMouseWarp()
 PHYSFS_file *openLoadFile(const char *fileName, bool hard_fail)
 {
 	PHYSFS_file *fileHandle = PHYSFS_openRead(fileName);
-	debug(LOG_NEVER, "Reading...[directory: %s] %s", PHYSFS_getRealDir(fileName), fileName);
+	debug(LOG_NEVER, "Reading...[directory: %s] %s", WZ_PHYSFS_getRealDir_String(fileName).c_str(), fileName);
 	if (!fileHandle)
 	{
 		if (hard_fail)
@@ -296,7 +296,7 @@ bool saveFile(const char *pFileName, const char *pFileData, UDWORD fileSize)
 	}
 	else
 	{
-		debug(LOG_WZ, "Successfully wrote to %s%s with %d bytes", PHYSFS_getRealDir(pFileName), pFileName, size);
+		debug(LOG_WZ, "Successfully wrote to %s%s with %d bytes", WZ_PHYSFS_getRealDir_String(pFileName).c_str(), pFileName, size);
 	}
 	return true;
 }
@@ -345,4 +345,56 @@ bool PHYSFS_printf(PHYSFS_file *file, const char *format, ...)
 	va_end(ap);
 
 	return WZ_PHYSFS_writeBytes(file, vaBuffer, strlen(vaBuffer));
+}
+
+std::string video_backend_names[] =
+{
+	"opengl",
+	"opengles",
+	"vulkan",
+#if defined(WZ_BACKEND_DIRECTX)
+	"directx",
+#endif
+	"invalid" // Must be last!
+};
+
+static_assert((size_t)video_backend::num_backends == (sizeof(video_backend_names) / sizeof(std::string)) - 1, "video_backend_names must match video_backend enum");
+
+bool video_backend_from_str(const char *str, video_backend &output_backend)
+{
+	for (size_t i = 0; i < (size_t)video_backend::num_backends; i++)
+	{
+		if (strcasecmp(video_backend_names[i].c_str(), str) == 0)
+		{
+			output_backend = (video_backend)i;
+			return true;
+		}
+	}
+	return false;
+}
+
+std::string to_string(video_backend backend)
+{
+	return video_backend_names[(size_t)backend];
+}
+
+std::string to_display_string(const video_backend& backend)
+{
+	switch (backend)
+	{
+		case video_backend::opengl:
+			return "OpenGL";
+		case video_backend::opengles:
+			return "OpenGL ES";
+		case video_backend::vulkan:
+			return "Vulkan";
+#if defined(WZ_BACKEND_DIRECTX)
+		case video_backend::directx:
+			return "DirectX (ANGLE)";
+#endif
+		case video_backend::num_backends:
+			debug(LOG_FATAL, "Should never happen");
+			break;
+	}
+	return "n/a";
 }

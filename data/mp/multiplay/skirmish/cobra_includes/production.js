@@ -21,6 +21,14 @@ function isDesignable(item, body, prop)
 	return (virDroid !== null);
 }
 
+function havePrimaryOrArtilleryWeapon()
+{
+	var primary = componentAvailable(subPersonalities[personality].primaryWeapon.weapons[0].stat);
+	var artillery = componentAvailable(subPersonalities[personality].artillery.weapons[0].stat);
+
+	return (primary || artillery);
+}
+
 //Pick a random weapon line. May return undefined for machineguns.
 function chooseRandomWeapon()
 {
@@ -84,7 +92,7 @@ function chooseRandomCyborgWeapon()
 		case 0: weaps = subPersonalities[personality].primaryWeapon; break;
 		case 1: if (subPersonalities[personality].useLasers === true) { weaps = weaponStats.lasers; } break;
 		case 2: weaps = subPersonalities[personality].secondaryWeapon; break;
-		case 3: if(!componentAvailable("Mortar3ROTARYMk1") && useArti) { weaps = subPersonalities[personality].artillery; } break;
+		case 3: if (!componentAvailable("Mortar3ROTARYMk1") && useArti) { weaps = subPersonalities[personality].artillery; } break;
 		default: weaps = subPersonalities[personality].primaryWeapon; break;
 	}
 
@@ -99,12 +107,23 @@ function chooseRandomVTOLWeapon()
 
 	switch (random(5))
 	{
-		case 0: if((returnPrimaryAlias() !== "mg") && (returnPrimaryAlias() !== "fl")) { weaps = subPersonalities[personality].primaryWeapon; } break;
+		case 0: if (returnPrimaryAlias() !== "fl") { weaps = subPersonalities[personality].primaryWeapon; } break;
 		case 1: if (subPersonalities[personality].useLasers === true) { weaps = weaponStats.lasers; } break;
 		case 2: weaps = subPersonalities[personality].secondaryWeapon; break;
 		case 3: weaps = weaponStats.bombs; break;
 		case 4: weaps = weaponStats.empBomb; isEMP = true; break;
 		default: weaps = weaponStats.bombs; break;
+	}
+
+	//Rare chance to make a Sunburst VTOL if we use Rocket AA.
+	if ((returnAntiAirAlias() === "rktaa") && (random(100) < 8) && playerVtolRatio(getMostHarmfulPlayer()) >= 0.25)
+	{
+		weaps = weaponStats.rockets_AA;
+	}
+	//Rare chance to make a bunker buster VTOL if we are a rocket personality.
+	if ((random(100) < 5) && personalityIsRocketMain() && (playerStructureUnitRatio(getMostHarmfulPlayer()) >= 0.08))
+	{
+		weaps = weaponStats.rockets_AS;
 	}
 
 	if (!isDefined(weaps) || (!isEMP && (weaps.vtols.length - 1 <= 0)))
@@ -175,8 +194,23 @@ function choosePersonalityWeapon(type)
  			}
 		}
 
+		// Allow small chance for Bunker Busters if main weapons lines are rockets.
+		if (!skip && ((random(100) < 7) && personalityIsRocketMain() && (playerStructureUnitRatio(getMostHarmfulPlayer()) >= 0.25)))
+		{
+			weaponList = [];
+			skip = true;
+			var bunkerBusters = weaponStats.rockets_AS.weapons;
+
+ 			for (var i = bunkerBusters.length - 1; i >= 0; --i)
+			{
+				var weapObj = bunkerBusters[i];
+ 				weaponList.push(weapObj.stat);
+ 			}
+		}
+
+		// Maybe choose a machinegun.
 		if (!skip && ((!turnOffMG && (random(100) < Math.floor(playerCyborgRatio(getMostHarmfulPlayer()) * 100))) ||
-			!componentAvailable(subPersonalities[personality].primaryWeapon.weapons[0].stat)))
+			!havePrimaryOrArtilleryWeapon()))
 		{
 			weaponList = [];
 			var generalAntiCyborgWeapons = weaponStats.machineguns.weapons;
@@ -226,7 +260,7 @@ function useHover(weap)
 
 		if ((NAME === "Flame1Mk1") || (NAME === "Flame2") || (NAME === "PlasmiteFlamer"))
 		{
-			useHover = true;
+			useHover = (random(100) <= 60);
 			break;
 		}
 
@@ -254,14 +288,14 @@ function pickPropulsion(weap)
 		return "hover01";
 	}
 
-	const TIME_FOR_HALF_TRACKS = 1200000;
+	const TIME_FOR_HALF_TRACKS = 600000;
 	var tankProp = [
 		"tracked01", // tracked01
 		"HalfTrack", // half-track
 		"wheeled01", // wheels
 	];
 
-	if ((random(100) < 45) || (gameTime < TIME_FOR_HALF_TRACKS))
+	if ((gameTime < TIME_FOR_HALF_TRACKS) || (!(getRealPower() >= PRODUCTION_POWER + 200) && random(100) < 40))
 	{
 		tankProp.shift();
 	}
@@ -296,14 +330,33 @@ function buildAttacker(id)
 				secondary = "EMP-Cannon";
 			}
 
+			//Early-game now has a focus on small or medium body and will then shift
+			//a preference towards heavy or medium bodies (if power is relatively low).
+			//This helps keep things competitive among a player rushing with small/medium bodies.
+
 			var body;
-			if ((gameTime < 600000 && getMultiTechLevel() === 1) || (!highOilMap() && gameTime < 1200000 && random(100) < 33 && getMultiTechLevel() <= 2))
+			var bodySwitchTime = 900000;
+			if (gameTime < bodySwitchTime && random(100) < 75)
 			{
-				body = VTOL_BODY;
+				if (!(getRealPower() >= PRODUCTION_POWER + 200) && random(100) < 60)
+				{
+					body = SYSTEM_BODY;
+				}
+				else
+				{
+					body = VTOL_BODY;
+				}
 			}
 			else
 			{
-				body = TANK_BODY;
+				if (!(getRealPower() >= PRODUCTION_POWER + 200) && random(100) < 40)
+				{
+					body = VTOL_BODY;
+				}
+				else
+				{
+					body = TANK_BODY;
+				}
 			}
 
 			return getRealPower() > PRODUCTION_POWER && buildDroid(fac, "Droid", body, pickPropulsion(weap), "", "", weap, secondary);
@@ -368,7 +421,7 @@ function buildCyborg(id, useEngineer)
 
 	//Choose MG instead if enemy has enough cyborgs.
 	if ((!turnOffMG && (random(100) < Math.floor(playerCyborgRatio(getMostHarmfulPlayer()) * 100))) ||
-		!componentAvailable(subPersonalities[personality].primaryWeapon.weapons[0].stat))
+		!havePrimaryOrArtilleryWeapon())
 	{
 		weaponLine = weaponStats.machineguns;
 	}
@@ -459,8 +512,8 @@ function attackerCountsGood(recycle)
 		recycle = false;
 	}
 
-	var highOilExtras = highOilMap() ? 10 : 0;
-	var recycleExtras = recycle ? 8 : 0;
+	var highOilExtras = highOilMap() ? 15 : 0;
+	var recycleExtras = recycle ? 20 : 0;
 
 	var amountOfAttackers = groupSize(attackGroup) + groupSize(artilleryGroup) + groupSize(vtolGroup);
 
@@ -477,7 +530,7 @@ function produce()
 	}
 	const MIN_SENSORS = 1;
 	const MIN_REPAIRS = 2;
-	var useCybEngineer = !countStruct(structures.factories); //use them if we have no factory
+	var useCybEngineer = !countStruct(structures.factory); //use them if we have no factory
 	var systems = analyzeQueuedSystems();
 
 	var attackers = groupSize(attackGroup);
@@ -503,56 +556,72 @@ function produce()
 			for (var x = 0, l = fac.length; x < l; ++x)
 			{
 				const FC = fac[x];
-				if (FC && FC.status === BUILT && structureIdle(FC))
+				if (!(FC && FC.status === BUILT))
 				{
-					if (facType === FACTORY)
+					continue;
+				}
+				//Now accounts for overproduction of trucks stalling combat unit production (only seen on higher oil based maps)
+				const VIR_DROID = getDroidProduction(FC);
+				if (!structureIdle(FC) &&
+					!(countDroid(DROID_CONSTRUCT) >= getDroidLimit(me, DROID_CONSTRUCT) &&
+					VIR_DROID !== null &&
+					VIR_DROID.droidType === DROID_CONSTRUCT))
+				{
+					continue;
+				}
+
+				if (facType === FACTORY)
+				{
+					if (buildTrucks &&
+						(attackerCountsGood(false) ||
+						(gameTime < 240000 && highOilMap()) ||
+						!havePrimaryOrArtilleryWeapon() ||
+						getMultiTechLevel() > 1))
 					{
-						var highTechCrazyCase = getMultiTechLevel() > 1 && baseType === CAMP_CLEAN;
-
-						if (buildTrucks &&
-							(attackerCountsGood(false) ||
-							(gameTime < 240000 && highOilMap()) ||
-							!componentAvailable(subPersonalities[personality].primaryWeapon.weapons[0].stat) ||
-							highTechCrazyCase))
-						{
-							buildSys(FC.id, "Spade1Mk1");
-						}
-						else if (buildSensors &&
-							(enumGroup(artilleryGroup).length > 0) &&
-							componentAvailable("SensorTurret1Mk1"))
-						{
-							buildSys(FC.id);
-						}
-						else if (allowSpecialSystems &&
-							buildRepairs &&
-							componentAvailable("LightRepair1"))
-						{
-							buildSys(FC.id, REPAIR_TURRETS);
-						}
-						else
-						{
-							if (!countStruct(structures.gens))
-							{
-								continue;
-							}
-
-							buildAttacker(FC.id);
-						}
+						buildSys(FC.id, "Spade1Mk1");
+					}
+					else if (buildSensors &&
+						(enumGroup(artilleryGroup).length > 0) &&
+						componentAvailable("SensorTurret1Mk1"))
+					{
+						buildSys(FC.id);
+					}
+					else if (allowSpecialSystems &&
+						buildRepairs &&
+						componentAvailable("LightRepair1"))
+					{
+						buildSys(FC.id, REPAIR_TURRETS);
 					}
 					else
 					{
-						if (countStruct(structures.gens))
+						if (!countStruct(structures.gen) || !countStruct(structures.derrick))
 						{
-							if (facType === CYBORG_FACTORY && (!turnOffCyborgs || !forceHover))
+							continue;
+						}
+
+						buildAttacker(FC.id);
+					}
+				}
+				else
+				{
+					var cyb = (facType === CYBORG_FACTORY);
+					//In some circumstances the bot could be left with no generators and no factories
+					//but still needs to produce combat engineers to, maybe, continue surviving.
+					if (countStruct(structures.gen) || (cyb && useCybEngineer && (gameTime > 480000)))
+					{
+						if (cyb && (!turnOffCyborgs || !forceHover))
+						{
+							if (!useCybEngineer && !countStruct(structures.derrick))
 							{
-								buildCyborg(FC.id, useCybEngineer);
+								continue; //no derricks while trying to build attack cyborg
 							}
-							else
+							buildCyborg(FC.id, useCybEngineer);
+						}
+						else
+						{
+							if (useVtol && facType === VTOL_FACTORY && countStruct(structures.derrick))
 							{
-								if (useVtol && facType === VTOL_FACTORY)
-								{
-									buildVTOL(FC.id);
-								}
+								buildVTOL(FC.id);
 							}
 						}
 					}

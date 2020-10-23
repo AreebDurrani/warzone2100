@@ -24,18 +24,22 @@
 #include "console.h"
 #include "lib/framework/fixedpoint.h"
 
-#define	MAP_ZOOM_RATE_MAX	(500)
-#define	MAP_ZOOM_RATE_MIN	(50)
-#define	MAP_ZOOM_RATE_DEFAULT	(250)
+#define	MAP_ZOOM_RATE_MAX	(1000)
+#define	MAP_ZOOM_RATE_MIN	(200)
+#define	MAP_ZOOM_RATE_DEFAULT	(500)
 #define	MAP_ZOOM_RATE_STEP	(50)
 
 #define MAP_PITCH_RATE		(SPIN_SCALING/SECS_PER_SPIN)
+
+extern int scrollDirUpDown;
+extern int scrollDirLeftRight;
 
 // --------------- All those keyboard mappable functions */
 void kf_HalveHeights();
 void kf_DebugDroidInfo();
 void kf_BuildInfo();
 void kf_ToggleFPS();			//FPS counter NOT same as kf_Framerate! -Q
+void kf_ToggleUnitCount();		// Display units built / lost / produced counter
 void kf_ToggleSamples();		// Displays # of sound samples in Queue/list.
 void kf_ToggleOrders();		//displays unit's Order/action state.
 void kf_FrameRate();
@@ -55,15 +59,14 @@ void kf_ToggleCamera();
 void kf_RaiseTile();
 void kf_LowerTile();
 void kf_MapCheck();
-void kf_SystemClose();
 void kf_ZoomOut();
-void kf_ZoomOutStep();
 void kf_ZoomIn();
-void kf_ZoomInStep();
 void kf_ShrinkScreen();
 void kf_ExpandScreen();
 void kf_RotateLeft();
 void kf_RotateRight();
+void kf_RotateBuildingCW();
+void kf_RotateBuildingACW();
 void kf_PitchBack();
 void kf_PitchForward();
 void kf_ResetPitch();
@@ -90,17 +93,29 @@ void kf_AssignGrouping_6();
 void kf_AssignGrouping_7();
 void kf_AssignGrouping_8();
 void kf_AssignGrouping_9();
+void kf_AddGrouping_0();
+void kf_AddGrouping_1();
+void kf_AddGrouping_2();
+void kf_AddGrouping_3();
+void kf_AddGrouping_4();
+void kf_AddGrouping_5();
+void kf_AddGrouping_6();
+void kf_AddGrouping_7();
+void kf_AddGrouping_8();
+void kf_AddGrouping_9();
 void kf_SelectMoveGrouping();
 void kf_ToggleDroidInfo();
 void kf_addInGameOptions();
 void kf_NewPlayerPower();
 void kf_addMultiMenu();
-void kf_multiAudioStart();
-void kf_multiAudioStop();
 void kf_JumpToMapMarker();
 void kf_TogglePowerBar();
 void kf_ToggleDebugMappings();
 void kf_ToggleGodMode();
+void kf_CameraUp();
+void kf_CameraDown();
+void kf_CameraLeft();
+void kf_CameraRight();
 void kf_SeekNorth();
 void kf_MaxScrollLimits();
 void kf_LevelSea();
@@ -172,7 +187,6 @@ void kf_SetDroidReturnToBase();
 void kf_SetDroidGoToTransport();
 void kf_SetDroidGoForRepair();
 void kf_SetDroidRecycle();
-void kf_ScatterDroids();
 void kf_CentreOnBase();
 void kf_ToggleFog();
 void kf_MoveToLastMessagePos();
@@ -199,8 +213,14 @@ void kf_RadarZoomIn();
 void kf_RadarZoomOut();
 void kf_SelectNextFactory();
 void kf_SelectNextCyborgFactory();
+void kf_SelectNextVTOLFactory();
 void kf_SelectNextPowerStation();
 void kf_SelectNextResearch();
+void kf_JumpNextFactory();
+void kf_JumpNextCyborgFactory();
+void kf_JumpNextVTOLFactory();
+void kf_JumpNextPowerStation();
+void kf_JumpNextResearch();
 void kf_ToggleConsoleDrop();
 void kf_ToggleMouseInvert();
 void kf_BifferBaker();

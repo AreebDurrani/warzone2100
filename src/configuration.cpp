@@ -40,7 +40,6 @@
 #include "lib/sound/mixer.h"
 #include "lib/sound/sounddefs.h"
 #include "lib/ivis_opengl/screen.h"
-#include "lib/framework/opengl.h"
 #include "lib/ivis_opengl/pieclip.h"
 
 #include "ai.h"
@@ -56,6 +55,9 @@
 #include "texture.h"
 #include "warzoneconfig.h"
 #include "titleui/titleui.h"
+#include "activity.h"
+#include "nethelpers.h"
+#include "lib/framework/wzapp.h"
 
 #include <type_traits>
 
@@ -75,6 +77,9 @@ bool loadConfig()
 		debug(LOG_ERROR, "Could not open configuration file \"%s\"", fileName);
 		return false;
 	}
+
+	ActivityManager::instance().beginLoadingSettings();
+
 	debug(LOG_WZ, "Reading configuration from %s", ini.fileName().toUtf8().constData());
 	if (ini.contains("voicevol"))
 	{
@@ -125,6 +130,7 @@ bool loadConfig()
 		wz_texture_compression = false;
 	}
 	showFPS = ini.value("showFPS", false).toBool();
+	showUNITCOUNT = ini.value("showUNITCOUNT", false).toBool();
 	if (ini.contains("cameraSpeed"))
 	{
 		war_SetCameraSpeed(ini.value("cameraSpeed").toInt());
@@ -154,6 +160,9 @@ bool loadConfig()
 	        ini.value("fontfacebold", "Bold").toString().toUtf8().constData());
 	NETsetMasterserverPort(ini.value("masterserver_port", MASTERSERVERPORT).toInt());
 	NETsetGameserverPort(ini.value("gameserver_port", GAMESERVERPORT).toInt());
+	NETsetJoinPreferenceIPv6(ini.value("prefer_ipv6", true).toBool());
+	setPublicIPv4LookupService(ini.value("publicIPv4LookupService_Url", WZ_DEFAULT_PUBLIC_IPv4_LOOKUP_SERVICE_URL).toString().toStdString(), ini.value("publicIPv4LookupService_JSONKey", WZ_DEFAULT_PUBLIC_IPv4_LOOKUP_SERVICE_JSONKEY).toString().toStdString());
+	setPublicIPv6LookupService(ini.value("publicIPv6LookupService_Url", WZ_DEFAULT_PUBLIC_IPv6_LOOKUP_SERVICE_URL).toString().toStdString(), ini.value("publicIPv6LookupService_JSONKey", WZ_DEFAULT_PUBLIC_IPv6_LOOKUP_SERVICE_JSONKEY).toString().toStdString());
 	war_SetFMVmode((FMV_MODE)ini.value("FMVmode", FMV_FULLSCREEN).toInt());
 	war_setScanlineMode((SCANLINE_MODE)ini.value("scanlines", SCANLINES_OFF).toInt());
 	seq_SetSubtitles(ini.value("subtitles", true).toBool());
@@ -200,7 +209,7 @@ bool loadConfig()
 	war_SetTrapCursor(ini.value("trapCursor", false).toBool());
 	war_SetColouredCursor(ini.value("coloredCursor", true).toBool());
 	// this should be enabled on all systems by default
-	war_SetVsync(ini.value("vsync", true).toBool());
+	war_SetVsync(ini.value("vsync", 1).toInt());
 	// the default (and minimum) display scale is 100 (%)
 	unsigned int displayScale = ini.value("displayScale", war_GetDisplayScale()).toUInt();
 	if (displayScale < 100)
@@ -229,9 +238,26 @@ bool loadConfig()
 
 	if (ini.contains("bpp"))
 	{
-		pie_SetVideoBufferDepth(ini.value("bpp").toInt());
+		war_SetVideoBufferDepth(ini.value("bpp").toInt());
 	}
 	setFavoriteStructs(ini.value("favoriteStructs").toString().toUtf8().constData());
+
+	video_backend gfxBackend;
+	if (ini.contains("gfxbackend"))
+	{
+		if (!video_backend_from_str(ini.value("gfxbackend").toString().toUtf8().constData(), gfxBackend))
+		{
+			gfxBackend = wzGetDefaultGfxBackendForCurrentSystem();
+			debug(LOG_WARNING, "Unsupported / invalid gfxbackend value: %s; defaulting to: %s", ini.value("gfxbackend").toString().toUtf8().constData(), to_string(gfxBackend).c_str());
+		}
+	}
+	else
+	{
+		gfxBackend = wzGetDefaultGfxBackendForCurrentSystem();
+	}
+	war_setGfxBackend(gfxBackend);
+
+	ActivityManager::instance().endLoadingSettings();
 	return true;
 }
 
@@ -259,7 +285,7 @@ bool saveConfig()
 	ini.setValue("width", war_GetWidth());
 	ini.setValue("height", war_GetHeight());
 	ini.setValue("screen", war_GetScreen());
-	ini.setValue("bpp", pie_GetVideoBufferDepth());
+	ini.setValue("bpp", war_GetVideoBufferDepth());
 	ini.setValue("fullscreen", war_getFullscreen());
 	ini.setValue("language", getLanguage());
 	ini.setValue("difficulty", getDifficultyLevel());		// level
@@ -273,6 +299,7 @@ bool saveConfig()
 	ini.setValue("RightClickOrders", (SDWORD)(getRightClickOrders()));
 	ini.setValue("MiddleClickRotate", (SDWORD)(getMiddleClickRotate()));
 	ini.setValue("showFPS", (SDWORD)showFPS);
+	ini.setValue("showUNITCOUNT", (SDWORD)showUNITCOUNT);
 	ini.setValue("shadows", (SDWORD)(getDrawShadows()));	// shadows
 	ini.setValue("sound", (SDWORD)war_getSoundEnabled());
 	ini.setValue("FMVmode", (SDWORD)(war_GetFMVmode()));		// sequences
@@ -294,6 +321,11 @@ bool saveConfig()
 	ini.setValue("masterserver_port", NETgetMasterserverPort());
 	ini.setValue("server_name", mpGetServerName());
 	ini.setValue("gameserver_port", NETgetGameserverPort());
+	ini.setValue("prefer_ipv6", NETgetJoinPreferenceIPv6());
+	ini.setValue("publicIPv4LookupService_Url", getPublicIPv4LookupServiceUrl().c_str());
+	ini.setValue("publicIPv4LookupService_JSONKey", getPublicIPv4LookupServiceJSONKey().c_str());
+	ini.setValue("publicIPv6LookupService_Url", getPublicIPv6LookupServiceUrl().c_str());
+	ini.setValue("publicIPv6LookupService_JSONKey", getPublicIPv6LookupServiceJSONKey().c_str());
 	if (!bMultiPlayer)
 	{
 		ini.setValue("colour", getPlayerColour(0));			// favourite colour.
@@ -318,6 +350,7 @@ bool saveConfig()
 	}
 	ini.setValue("colourMP", war_getMPcolour());
 	ini.setValue("favoriteStructs", getFavoriteStructs().toUtf8().c_str());
+	ini.setValue("gfxbackend", to_string(war_getGfxBackend()).c_str());
 	ini.sync();
 	return true;
 }

@@ -57,10 +57,10 @@ bool startMission(LEVEL_TYPE missionType, char *pGame);
 void endMission();
 
 /** Initialise the mission stuff for a save game. */
-bool startMissionSave(SDWORD missionType);
+bool startMissionSave(LEVEL_TYPE missionType);
 
 /** Sets up the game to start a new mission. */
-bool setUpMission(UDWORD type);
+bool setUpMission(LEVEL_TYPE type);
 
 /** This causes the new mission data to be loaded up. */
 void launchMission();
@@ -189,6 +189,20 @@ void resetMissionWidgets();
 
 UDWORD	getCampaignNumber();
 void	setCampaignNumber(UDWORD number);
+
+std::string getCampaignName();
+
+struct CAMPAIGN_FILE
+{
+	WzString name;
+	WzString level;
+	WzString video;
+	WzString captions;
+	WzString package;
+	WzString loading;
+};
+std::vector<CAMPAIGN_FILE> readCampaignFiles();
+
 bool intAddMissionResult(bool result, bool bPlaySuccess, bool showBackDrop);
 
 

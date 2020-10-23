@@ -31,6 +31,7 @@ Latest development builds
  [![Fedora Build Status](https://img.shields.io/github/workflow/status/Warzone2100/warzone2100/Fedora/master?label=Fedora&logo=fedora&logoColor=FFFFFF)](https://github.com/Warzone2100/warzone2100/actions?query=workflow%3AFedora+branch%3Amaster+event%3Apush)
  [![FreeBSD Build Status](https://img.shields.io/cirrus/github/Warzone2100/warzone2100/master?label=FreeBSD&logo=FreeBSD)](https://cirrus-ci.com/github/Warzone2100/warzone2100/master)
  [![Travis CI Build Status](https://img.shields.io/travis/Warzone2100/warzone2100/master?label=ARM64%20%2F%20Misc)](https://travis-ci.org/Warzone2100/warzone2100)
+ [![Packaging status](https://repology.org/badge/tiny-repos/warzone2100.svg)](https://repology.org/project/warzone2100/versions)
 
 ### Windows
 
@@ -49,7 +50,24 @@ How to get the latest macOS development builds:
    Click it to view the build artifacts.
 3. Download the `warzone2100_macOS` artifact (a download icon will appear to the right side of the row when you mouse-over).
 
-### Linux
+### Ubuntu
+
+How to get the latest Ubuntu development builds:
+1. View the **[latest successful Ubuntu builds](https://github.com/Warzone2100/warzone2100/actions?query=workflow%3AUbuntu+branch%3Amaster+event%3Apush+is%3Asuccess)**.
+2. Select the latest workflow run in the table / list.
+   This should display a list of **Artifacts** from the run.
+3. Download the appropriate `warzone2100_ubuntu<version>_amd64_deb` artifact.
+   - If you are running Ubuntu 18.04: `warzone2100_ubuntu18.04_amd64_deb`
+   - If you are running Ubuntu 20.04: `warzone2100_ubuntu20.04_amd64_deb`
+> Note: A free GitHub account is currently required to download the artifacts.
+4. Extract the contents of the downloaded .zip (`warzone2100_ubuntu<version>_amd64.deb`) to your Desktop.
+5. Execute the following commands in Terminal:
+```
+cd ~/Desktop
+sudo apt install ./warzone2100_ubuntu<version>_amd64.deb
+```
+
+### Linux (from source)
 
 Clone this Git repo and build, following the instructions under:
 [How to Build](#how-to-build)
@@ -240,6 +258,7 @@ To properly build the game, either:
   ```
   git clone https://github.com/Warzone2100/warzone2100.git
   cd warzone2100
+  git fetch --tags
   git submodule update --init --recursive
   ```
   > Note: Initializing submodules is required.
@@ -247,10 +266,57 @@ To properly build the game, either:
 Do **not** use GitHub's "Download Zip" option, as it does not contain submodules or the Git-based autorevision information.
 
 ### Linux
-See http://developer.wz2100.net/wiki/CompileGuideLinux
 
-### Windows Cross compile
-See http://developer.wz2100.net/wiki/CompileGuideWindows/Cross
+* Prerequisites
+   * Compiling tools (ex. CMake, GCC/G++/Clang, ninja-build)
+   * Archiving tools (ex. zip, p7zip)
+   * Various libraries:
+      * [SDL](https://www.libsdl.org) ≥ 2.0.5 _(strongly recommended: ≥ 2.0.8)_
+      * [PhysicsFS](https://icculus.org/physfs/) ≥ 2.0.3-3 _(strongly recommended: ≥ 3.0.2)_
+      * [libpng](https://www.libpng.org/pub/png/libpng.html) ≥ 1.2
+      * [libtheora](https://theora.org)
+      * [libvorbis](https://xiph.org/vorbis)
+      * [Freetype](https://www.freetype.org/)
+      * [Harfbuzz](https://github.com/harfbuzz/harfbuzz) ≥ 1.0
+      * [OpenAL-Soft](https://openal-soft.org)
+      * [libcurl](https://curl.haxx.se/libcurl/) _(strongly recommended: ≥ 7.58.0)_
+      * [libsodium](https://github.com/jedisct1/libsodium) ≥ 1.0.14
+      * [Qt5 Script](https://doc.qt.io/qt-5/qtscript-index.html) ≥ 5.6
+   * For language support: [Gettext](https://www.gnu.org/software/gettext/)
+   * To generate documentation: [Asciidoctor](https://asciidoctor.org) ≥ 1.5.3
+   * To build with Vulkan support: the full [Vulkan SDK](https://vulkan.lunarg.com/sdk/home) _(strongly recommended: ≥ 1.2.148.1)_
+* **Installing prerequisites:**
+   * Ubuntu 18.04+:
+   ```
+   sudo apt-get -u update
+   sudo apt-get -y install git gcc g++ clang cmake libc-dev dpkg-dev ninja-build zip unzip pkg-config gettext asciidoctor
+   sudo apt-get -y install libpng-dev libsdl2-dev libopenal-dev libphysfs-dev libvorbis-dev libtheora-dev libxrandr-dev qtscript5-dev qt5-default libfribidi-dev libfreetype6-dev libharfbuzz-dev libfontconfig1-dev libcurl4-gnutls-dev gnutls-dev libsodium-dev
+   ```
+   * Fedora:
+   ```
+   sudo dnf -y update && dnf clean all
+   sudo dnf -y install git gcc gcc-c++ cmake ninja-build p7zip gettext rubygem-asciidoctor
+   sudo dnf -y install qt5-qtbase-devel qt5-qtscript-devel libpng-devel SDL2-devel openal-soft-devel physfs-devel libogg-devel libvorbis-devel libtheora-devel freetype-devel harfbuzz-devel libcurl-devel openssl-devel libsodium-devel
+   ```
+* **Building from the command-line:**
+   1. Starting from the _parent_ directory of the warzone2100 source code (which is assumed to be in a folder named `warzone2100`), create a **sibling** build directory:
+      ```
+      mkdir build
+      ```
+   2. Change directory into the sibling `build` directory:
+      ```
+      cd build
+      ```
+   3. Run CMake configure to generate the build files:
+      ```
+      cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX:PATH=~/wz/install -GNinja ../warzone2100
+      ```
+      > - [Modify the `CMAKE_INSTALL_PREFIX` parameter value as desired](https://cmake.org/cmake/help/latest/variable/CMAKE_INSTALL_PREFIX.html) to configure the base installation path.
+      > - The `../warzone2100` path at the end should point to the warzone2100 source directory.
+   4. Run CMake build:
+      ```
+      cmake --build . --target install
+      ```
 
 ### Windows using MSVC
 
@@ -259,17 +325,22 @@ See http://developer.wz2100.net/wiki/CompileGuideWindows/Cross
       - If you do not already have Visual Studio installed, you can download the free **Visual Studio Community** from: https://developer.microsoft.com/en-us/windows/downloads
       - IMPORTANT: You need the fully-featured Visual Studio IDE. “Visual Studio Code” does not include the necessary support for building C++ Windows apps.
    * **CMake 3.10+** (https://cmake.org/)
-   * **QT 5.9.1+** (https://www.qt.io/)
+   * **Qt 5.9.1+** (https://www.qt.io/)
+     - Here's a direct link to the [Qt 5.9.9 installer](https://download.qt.io/archive/qt/5.9/5.9.9/).
+     - You will probably need to register for a Qt account during the installation, along with activating your email.
+     - Required components to install: MSVC 2015, Qt Script (even though it's labelled as deprecated). The MSVC 2015 components will work on MSVC 2017 / 2019, and 32-bit versions work on 64-bit platforms.
    * **Git** (if not building from a release source archive)
    * **7-Zip** (http://www.7-zip.org)
+   * **Vulkan SDK 1.2.148.1+** (https://vulkan.lunarg.com/sdk/home)
+      - Required only if you want to build with Vulkan support.
 * **Preparing to build:**
    Build dependencies are provided via [vcpkg](https://github.com/Microsoft/vcpkg) from Microsoft.
    * Run the `get-dependencies_win.ps1` script from powershell in order to download and build the dependencies.
 * **Building from the command-line:**
    * Change directory to the warzone2100 repo directory
    * Configure
-      * Visual Studio 2017: `cmake -H. -DCMAKE_TOOLCHAIN_FILE=vcpkg\scripts\buildsystem\vcpkg.cmake -Bbuild -G "Visual Studio 15 2017"`
-      * Visual Studio 2015: `cmake -H. -DCMAKE_TOOLCHAIN_FILE=vcpkg\scripts\buildsystem\vcpkg.cmake -Bbuild -G "Visual Studio 14 2015"`
+      * Visual Studio 2017: `cmake -H. -DCMAKE_TOOLCHAIN_FILE=vcpkg\scripts\buildsystems\vcpkg.cmake -Bbuild -G "Visual Studio 15 2017"`
+      * Visual Studio 2015: `cmake -H. -DCMAKE_TOOLCHAIN_FILE=vcpkg\scripts\buildsystems\vcpkg.cmake -Bbuild -G "Visual Studio 14 2015"`
    * Build
       * Release: `cmake --build build --config Release`
       * Debug: `cmake --build build --config Debug`
@@ -277,12 +348,12 @@ See http://developer.wz2100.net/wiki/CompileGuideWindows/Cross
    1. Open Visual Studio 2017
    2. Open the warzone2100 folder using **File** > **Open** > **Folder...**
       - Allow Visual Studio some time to load the project and retrieve information from CMake.
-   3. Create a VS CMake settings JSON file using **CMake** > **Change CMake settings**.
+   3. Create a VS CMake settings JSON file using **CMake** > **Change CMake settings**. You can also reach this dialog by clicking "Manage Configurations" in the configuration dropdown in the toolbar. Make sure the CMake components in Visual Studio are installed (by running the Visual Studio Installer).
       - This creates `CMakeSettings.json`
-   4. Add the following variables to `cmakeCommandArgs` in `CMakeSettings.json`:
-      - `-DCMAKE_PREFIX_PATH=C:\Qt\Qt5.9.4\5.9.4\msvc2015` (change to use the appropriate path to your Qt installation)
-      - `-DCMAKE_TOOLCHAIN_FILE=vcpkg\scripts\buildsystems\vcpkg.cmake`
-      - Note: Visual Studio should automatically escape and turn each `\` into `\\`
+   4. Add the following variables to `CMakeSettings.json`:
+      - To `cmakeCommandArgs`, add: `-DCMAKE_TOOLCHAIN_FILE=vcpkg\scripts\buildsystems\vcpkg.cmake -DCMAKE_PREFIX_PATH=C:\Qt\Qt5.9.9\5.9.9\msvc2015` (check your Qt installation path)
+      - If you're running a 64-bit platform, you need to set the compilation to 32-bit by setting `inheritEnvironments` to `[ "msvc_x86_x64" ]`
+      - Note: Visual Studio automatically escapes and turns each `\` into `\\`
    5. After letting Visual Studio re-run CMake configure with the new settings, you can build using the **CMake** menu.
 
 ### macOS

@@ -97,6 +97,8 @@ void structureDemolish(STRUCTURE *psStructure, DROID *psDroid, int buildPoints);
 void structureRepair(STRUCTURE *psStruct, DROID *psDroid, int buildRate);
 /* Set the type of droid for a factory to build */
 bool structSetManufacture(STRUCTURE *psStruct, DROID_TEMPLATE *psTempl, QUEUE_MODE mode);
+uint32_t structureBuildPointsToCompletion(const STRUCTURE & structure);
+float structureCompletionProgress(const STRUCTURE & structure);
 
 //temp test function for creating structures at the start of the game
 void createTestStructures();
@@ -202,6 +204,8 @@ void buildingComplete(STRUCTURE *psBuilding);
 // these functions are used in game.c inplace of  building complete
 void checkForResExtractors(STRUCTURE *psPowerGen);
 void checkForPowerGen(STRUCTURE *psPowerGen);
+
+uint16_t countPlayerUnusedDerricks();
 
 // Set the command droid that factory production should go to struct _command_droid;
 void assignFactoryCommandDroid(STRUCTURE *psStruct, struct DROID *psCommander);
@@ -350,8 +354,8 @@ bool IsStatExpansionModule(const STRUCTURE_STATS *psStats);
 bool structureIsBlueprint(const STRUCTURE *psStructure);
 bool isBlueprint(const BASE_OBJECT *psObject);
 
-/*returns the power cost to build this structure*/
-UDWORD structPowerToBuild(const STRUCTURE *psStruct);
+/*returns the power cost to build this structure, or to add its next module */
+UDWORD structPowerToBuildOrAddNextModule(const STRUCTURE *psStruct);
 
 // check whether a factory of a certain number and type exists
 bool checkFactoryExists(UDWORD player, UDWORD factoryType, UDWORD inc);
@@ -364,6 +368,8 @@ void cbNewDroid(STRUCTURE *psFactory, DROID *psDroid);
 
 StructureBounds getStructureBounds(const STRUCTURE *object);
 StructureBounds getStructureBounds(const STRUCTURE_STATS *stats, Vector2i pos, uint16_t direction);
+
+bool canStructureHaveAModuleAdded(const STRUCTURE* const structure);
 
 static inline int structSensorRange(const STRUCTURE *psObj)
 {
@@ -511,5 +517,18 @@ static inline int getBuildingRearmPoints(STRUCTURE *psStruct)
 
 WzString getFavoriteStructs();
 void setFavoriteStructs(WzString list);
+
+struct LineBuild
+{
+	Vector2i back() const { return (*this)[count - 1]; }
+	Vector2i operator [](int i) const { return begin + i*step; }
+
+	Vector2i begin = {0, 0};
+	Vector2i step = {0, 0};
+	int count = 0;
+};
+
+LineBuild calcLineBuild(Vector2i size, STRUCTURE_TYPE type, Vector2i pos, Vector2i pos2);
+LineBuild calcLineBuild(STRUCTURE_STATS const *stats, uint16_t direction, Vector2i pos, Vector2i pos2);
 
 #endif // __INCLUDED_SRC_STRUCTURE_H__

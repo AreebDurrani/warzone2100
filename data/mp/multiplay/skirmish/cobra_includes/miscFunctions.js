@@ -55,6 +55,11 @@ function returnArtilleryAlias()
 	return subPersonalities[personality].artillery.alias;
 }
 
+function personalityIsRocketMain()
+{
+	return ((returnPrimaryAlias() === "rkt") || (returnSecondaryAlias() === "rkt"));
+}
+
 //Distance between an object and the Cobra base.
 function distanceToBase(obj1, obj2)
 {
@@ -103,7 +108,7 @@ function rangeStep(player)
 		return undefined;
 	}
 
-	return cacheThis(uncached, [player]);
+	return cacheThis(uncached, [player], "rangeStep" + player, 10000);
 }
 
 //passing true finds allies and passing false finds enemies.
@@ -114,31 +119,22 @@ function playerAlliance(ally)
 		ally = false;
 	}
 
-	function uncached(ally)
+	var players = [];
+
+	for (var i = 0; i < maxPlayers; ++i)
 	{
-		var players = [];
-		for (var i = 0; i < maxPlayers; ++i)
+		if (i === me)
 		{
-			if (!ally)
-			{
-				if (!allianceExistsBetween(i, me) && (i !== me))
-				{
-					players.push(i);
-				}
-			}
-			else
-			{
-				if (allianceExistsBetween(i, me) && (i !== me))
-				{
-					players.push(i);
-				}
-			}
+			continue;
 		}
 
-		return players;
+		if ((!ally && !allianceExistsBetween(i, me)) || (ally && allianceExistsBetween(i, me)))
+		{
+			players.push(i);
+		}
 	}
 
-	return cacheThis(uncached, [ally], undefined, 5000);
+	return players;
 }
 
 //return real power levels.
@@ -185,7 +181,7 @@ function findLivingEnemies()
 		return alive;
 	}
 
-	return cacheThis(uncached, [], undefined, 10000);
+	return cacheThis(uncached, [], "findLivingEnemies + me", 8000);
 }
 
 //The enemy of which Cobra is focusing on.
@@ -230,7 +226,7 @@ function getMostHarmfulPlayer()
 		return mostHarmful;
 	}
 
-	return cacheThis(uncached, [], undefined, 7000);
+	return cacheThis(uncached, [], "getMostHarmfulPlayer" + me, 5000);
 }
 
 //Set the initial grudge counter to target a random enemy.
@@ -346,7 +342,6 @@ function initCobraGroups()
 	addDroidsToGroup(artilleryGroup, enumDroid(me, DROID_WEAPON).filter(function(obj) { return obj.isCB; }));
 
 	var cons = enumDroid(me, DROID_CONSTRUCT);
-	var highOil = highOilMap();
 	for (var i = 0, l = cons.length; i < l; ++i)
 	{
 		var con = cons[i];
@@ -370,6 +365,18 @@ function initCobraVars()
 	useArti = true;
 	useVtol = true;
 	lastAttackedByScavs = 0;
+	beacon = {
+		x: 0,
+		y: 0,
+		startTime: 0,
+		endTime: 0,
+		wasVtol: false,
+		disabled: !highOilMap(), //disabled by default unless it's a high oil map
+	};
+	enemyUsedElectronicWarfare = false;
+	startAttacking = false;
+	lastShuffleTime = 0;
+	forceDerrickBuildDefense = false;
 }
 
 //Attempt to workaround a bug with pickStructLocation() failing to find valid locations
@@ -403,5 +410,5 @@ function randomOffsetLocation(location)
 		return {x: newValueX, y: newValueY};
 	}
 
-	return cacheThis(uncached, [location], undefined, 2000);
+	return cacheThis(uncached, [location], "randomOffsetLocation" + me, 2000);
 }

@@ -28,7 +28,9 @@
 
 #include "lib/framework/file.h"
 #include "lib/framework/wzapp.h"
+#include "lib/framework/physfs_ext.h"
 
+#include "lib/ivis_opengl/piepalette.h" // for pal_Init()
 #include "lib/ivis_opengl/piestate.h"
 
 #include "map.h"
@@ -60,24 +62,19 @@
 #include "multiint.h"
 #include "multirecv.h"
 #include "template.h"
+#include "activity.h"
 
 // send complete game info set!
 void sendOptions()
 {
-	unsigned int i;
-
-	if (!NetPlay.isHost || !bHosted)  // Only host should act, and only if the game hasn't started yet.
-	{
-		ASSERT(false, "Host only routine detected for client or not hosting yet!");
-		return;
-	}
+	ASSERT_HOST_ONLY(return);
 
 	game.modHashes = getModHashList();
 
 	NETbeginEncode(NETbroadcastQueue(), NET_OPTIONS);
 
 	// First send information about the game
-	NETuint8_t(&game.type);
+	NETuint8_t(reinterpret_cast<uint8_t*>(&game.type));
 	NETstring(game.map, 128);
 	NETbin(game.hash.bytes, game.hash.Bytes);
 	uint32_t modHashesSize = game.modHashes.size();
@@ -95,41 +92,42 @@ void sendOptions()
 	NETbool(&game.isMapMod);
 	NETuint32_t(&game.techLevel);
 
-	for (i = 0; i < MAX_PLAYERS; i++)
+	for (unsigned i = 0; i < MAX_PLAYERS; i++)
 	{
-		NETuint8_t(&game.skDiff[i]);
+		NETint8_t(reinterpret_cast<int8_t*>(&NetPlay.players[i].difficulty));
 	}
 
 	// Send the list of who is still joining
-	for (i = 0; i < MAX_PLAYERS; i++)
+	for (unsigned i = 0; i < MAX_PLAYERS; i++)
 	{
 		NETbool(&ingame.JoiningInProgress[i]);
 	}
 
 	// Same goes for the alliances
-	for (i = 0; i < MAX_PLAYERS; i++)
+	for (unsigned i = 0; i < MAX_PLAYERS; i++)
 	{
-		unsigned int j;
-
-		for (j = 0; j < MAX_PLAYERS; j++)
+		for (unsigned j = 0; j < MAX_PLAYERS; j++)
 		{
 			NETuint8_t(&alliances[i][j]);
 		}
 	}
 
 	// Send the number of structure limits to expect
-	NETuint32_t(&ingame.numStructureLimits);
-	debug(LOG_NET, "(Host) Structure limits to process on client is %u", ingame.numStructureLimits);
+	uint32_t numStructureLimits = static_cast<uint32_t>(ingame.structureLimits.size());
+	NETuint32_t(&numStructureLimits);
+	debug(LOG_NET, "(Host) Structure limits to process on client is %zu", ingame.structureLimits.size());
 	// Send the structures changed
-	for (i = 0; i < ingame.numStructureLimits; i++)
+	for (auto structLimit : ingame.structureLimits)
 	{
-		NETuint32_t(&ingame.pStructureLimits[i].id);
-		NETuint32_t(&ingame.pStructureLimits[i].limit);
+		NETuint32_t(&structLimit.id);
+		NETuint32_t(&structLimit.limit);
 	}
-	updateLimitFlags();
+	updateStructureDisabledFlags();
 	NETuint8_t(&ingame.flags);
 
 	NETend();
+
+	ActivityManager::instance().updateMultiplayGameData(game, ingame, NETGameIsLocked());
 }
 
 // ////////////////////////////////////////////////////////////////////////////
@@ -142,7 +140,7 @@ void recvOptions(NETQUEUE queue)
 	NETbeginDecode(queue, NET_OPTIONS);
 
 	// Get general information about the game
-	NETuint8_t(&game.type);
+	NETuint8_t(reinterpret_cast<uint8_t*>(&game.type));
 	NETstring(game.map, 128);
 	NETbin(game.hash.bytes, game.hash.Bytes);
 	uint32_t modHashesSize;
@@ -164,7 +162,7 @@ void recvOptions(NETQUEUE queue)
 
 	for (i = 0; i < MAX_PLAYERS; i++)
 	{
-		NETuint8_t(&game.skDiff[i]);
+		NETint8_t(reinterpret_cast<int8_t*>(&NetPlay.players[i].difficulty));
 	}
 
 	// Send the list of who is still joining
@@ -186,39 +184,27 @@ void recvOptions(NETQUEUE queue)
 	netPlayersUpdated = true;
 
 	// Free any structure limits we may have in-place
-	if (ingame.numStructureLimits)
-	{
-		ingame.numStructureLimits = 0;
-		free(ingame.pStructureLimits);
-		ingame.pStructureLimits = nullptr;
-	}
+	ingame.structureLimits.clear();
 
 	// Get the number of structure limits to expect
-	NETuint32_t(&ingame.numStructureLimits);
-	debug(LOG_NET, "Host is sending us %u structure limits", ingame.numStructureLimits);
+	uint32_t numStructureLimits = 0;
+	NETuint32_t(&numStructureLimits);
+	debug(LOG_NET, "Host is sending us %u structure limits", numStructureLimits);
 	// If there were any changes allocate memory for them
-	if (ingame.numStructureLimits)
+	if (numStructureLimits)
 	{
-		ingame.pStructureLimits = (MULTISTRUCTLIMITS *)malloc(ingame.numStructureLimits * sizeof(MULTISTRUCTLIMITS));
+		ingame.structureLimits.resize(numStructureLimits);
 	}
 
-	for (i = 0; i < ingame.numStructureLimits; i++)
+	for (i = 0; i < numStructureLimits; i++)
 	{
-		NETuint32_t(&ingame.pStructureLimits[i].id);
-		NETuint32_t(&ingame.pStructureLimits[i].limit);
+		NETuint32_t(&ingame.structureLimits[i].id);
+		NETuint32_t(&ingame.structureLimits[i].limit);
 	}
 	NETuint8_t(&ingame.flags);
 
 	NETend();
 
-	// Do the skirmish slider settings if they are up
-	for (i = 0; i < MAX_PLAYERS; i++)
-	{
-		if (widgGetFromID(psWScreen, MULTIOP_SKSLIDE + i))
-		{
-			widgSetSliderPos(psWScreen, MULTIOP_SKSLIDE + i, game.skDiff[i]);
-		}
-	}
 	debug(LOG_INFO, "Rebuilding map list");
 	// clear out the old level list.
 	levShutDown();
@@ -245,10 +231,18 @@ void recvOptions(NETQUEUE queue)
 		}
 		else
 		{
+			pal_Init(); // Palette could be modded.
 			return false;  // Have the file already.
 		}
 
-		NetPlay.wzFiles.emplace_back(PHYSFS_openWrite(filename), hash);
+		PHYSFS_file *pFileHandle = PHYSFS_openWrite(filename);
+		if (pFileHandle == nullptr)
+		{
+			debug(LOG_ERROR, "Failed to open %s for writing: %s", filename, WZ_PHYSFS_getLastError());
+			return false;
+		}
+
+		NetPlay.wzFiles.emplace_back(pFileHandle, filename, hash);
 
 		// Request the map/mod from the host
 		NETbeginEncode(NETnetQueue(NET_HOST_ONLY), NET_FILE_REQUESTED);
@@ -306,62 +300,53 @@ void recvOptions(NETQUEUE queue)
 		addConsoleMessage(str, DEFAULT_JUSTIFY, NOTIFY_MESSAGE);
 		game.isMapMod = true;
 	}
+	game.isRandom = mapData && CheckForRandom(mapData->realFileName, mapData->apDataFiles[0]);
 
 	if (mapData)
 	{
 		loadMapPreview(false);
 	}
+
+	ActivityManager::instance().updateMultiplayGameData(game, ingame, NETGameIsLocked());
 }
 
 
 // ////////////////////////////////////////////////////////////////////////////
 // Host Campaign.
-bool hostCampaign(char *sGame, char *sPlayer)
+bool hostCampaign(char *sGame, char *sPlayer, bool skipResetAIs)
 {
-	PLAYERSTATS playerStats;
-	UDWORD		i;
-
 	debug(LOG_WZ, "Hosting campaign: '%s', player: '%s'", sGame, sPlayer);
 
 	freeMessages();
 
-	if (!NEThostGame(sGame, sPlayer, game.type, 0, 0, 0, game.maxPlayers))
+	if (!NEThostGame(sGame, sPlayer, static_cast<SDWORD>(game.type), 0, 0, 0, game.maxPlayers))
 	{
 		return false;
 	}
 
-	for (i = 0; i < MAX_PLAYERS; i++)
+	/* Skip resetting AIs if we are doing autohost */
+	if (NetPlay.bComms && !skipResetAIs)
 	{
-		if (NetPlay.bComms)
+		for (unsigned i = 0; i < MAX_PLAYERS; i++)
 		{
-			game.skDiff[i] = 0;     	// disable AI
+			NetPlay.players[i].difficulty = AIDifficulty::DISABLED;
 		}
 	}
 
 	NetPlay.players[selectedPlayer].ready = false;
+	sstrcpy(NetPlay.players[selectedPlayer].name, sPlayer);
 
 	ingame.localJoiningInProgress = true;
 	ingame.JoiningInProgress[selectedPlayer] = true;
 	bMultiPlayer = true;
 	bMultiMessages = true; // enable messages
 
-	loadMultiStats(sPlayer, &playerStats);				// stats stuff
+	PLAYERSTATS playerStats;
+	loadMultiStats(sPlayer, &playerStats);
 	setMultiStats(selectedPlayer, playerStats, false);
 	setMultiStats(selectedPlayer, playerStats, true);
 
-	// load AI values of challenge files for getAIName()
-	setupChallengeAIs();
-
-	// ensure all players have a name in One Player Skirmish games
-	if (!NetPlay.bComms)
-	{
-		sstrcpy(NetPlay.players[0].name, sPlayer);
-		for (unsigned i = 1; i < MAX_PLAYERS; ++i)
-		{
-		    sstrcpy(NetPlay.players[i].name, getAIName(i));
-		}
-	}
-
+	ActivityManager::instance().updateMultiplayGameData(game, ingame, NETGameIsLocked());
 	return true;
 }
 
@@ -393,12 +378,7 @@ bool multiShutdown()
 	NETshutdown();
 
 	debug(LOG_MAIN, "free game data (structure limits)");
-	if (ingame.numStructureLimits)
-	{
-		ingame.numStructureLimits = 0;
-		free(ingame.pStructureLimits);
-		ingame.pStructureLimits = nullptr;
-	}
+	ingame.structureLimits.clear();
 
 	return true;
 }
@@ -411,17 +391,11 @@ static bool gameInit()
 	for (player = 1; player < MAX_PLAYERS; player++)
 	{
 		// we want to remove disabled AI & all the other players that don't belong
-		if ((game.skDiff[player] == 0 || player >= game.maxPlayers) && player != scavengerPlayer())
+		if ((NetPlay.players[player].difficulty == AIDifficulty::DISABLED || player >= game.maxPlayers) && player != scavengerPlayer())
 		{
 			clearPlayer(player, true);			// do this quietly
 			debug(LOG_NET, "removing disabled AI (%d) from map.", player);
 		}
-	}
-
-	if (game.scavengers)	// FIXME - not sure if we still need this hack - Per
-	{
-		// ugly hack for now
-		game.skDiff[scavengerPlayer()] = DIFF_SLIDER_STOPS / 2;
 	}
 
 	unsigned playerCount = 0;
@@ -478,7 +452,6 @@ bool multiGameShutdown()
 	debug(LOG_NET, "%s is shutting down.", getPlayerName(selectedPlayer));
 
 	sendLeavingMsg();							// say goodbye
-	updateMultiStatsGames();					// update games played.
 
 	st = getMultiStats(selectedPlayer);	// save stats
 
@@ -494,17 +467,12 @@ bool multiGameShutdown()
 	NETclose();
 	NETremRedirects();
 
-	if (ingame.numStructureLimits)
-	{
-		ingame.numStructureLimits = 0;
-		free(ingame.pStructureLimits);
-		ingame.pStructureLimits = nullptr;
-	}
+	ingame.structureLimits.clear();
 	ingame.flags = 0;
 
 	ingame.localJoiningInProgress = false; // Clean up
 	ingame.localOptionsReceived = false;
-	ingame.bHostSetup = false;	// Dont attempt a host
+	ingame.side = InGameSide::MULTIPLAYER_CLIENT;
 	ingame.TimeEveryoneIsInGame = 0;
 	ingame.startTime = 0;
 	NetPlay.isHost					= false;

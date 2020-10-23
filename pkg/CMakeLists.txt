@@ -1,6 +1,17 @@
 cmake_minimum_required(VERSION 3.5)
 cmake_policy(SET CMP0054 NEW)
 
+#########################
+# Generator-specific components
+
+install(FILES
+  "${CMAKE_CURRENT_SOURCE_DIR}/debian/copyright"
+  DESTINATION "${CMAKE_INSTALL_DOCDIR}${WZ_OUTPUT_NAME_SUFFIX}"
+  COMPONENT DebianInfo
+)
+
+#########################
+
 function(copyFileToDir _file _destDir)
 	get_filename_component(_filename "${_file}" NAME)
 	configure_file(
@@ -10,10 +21,16 @@ function(copyFileToDir _file _destDir)
 	)
 endfunction()
 
+if(NOT DEFINED WZ_DIST_LICENSE OR NOT EXISTS "${WZ_DIST_LICENSE}")
+	message(FATAL_ERROR "This file should be included in the project's root CMakeLists.txt, after WZ_DIST_LICENSE is defined.")
+endif()
+
 set(CPACK_PACKAGE_NAME			"Warzone 2100")
 set(CPACK_PACKAGE_VENDOR		"Warzone 2100 Project")
-set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/COPYING")
+set(CPACK_RESOURCE_FILE_LICENSE "${WZ_DIST_LICENSE}")
 set(CPACK_PACKAGE_CHECKSUM		SHA256)
+set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/Description.txt")
+set(CPACK_PACKAGE_HOMEPAGE_URL  "https://wz2100.net")
 
 #########################
 # Default components that are added to package
@@ -144,8 +161,8 @@ if(CMAKE_SYSTEM_NAME MATCHES "Windows")
 	set(CPACK_NSIS_COMPONENT_INSTALL ON)
 
 	# Additional information
-	set(CPACK_NSIS_HELP_LINK "http://wz2100.net")
-	set(CPACK_NSIS_URL_INFO_ABOUT "http://wz2100.net")
+	set(CPACK_NSIS_HELP_LINK "https://wz2100.net")
+	set(CPACK_NSIS_URL_INFO_ABOUT "https://wz2100.net")
 
 elseif(CMAKE_SYSTEM_NAME MATCHES "Darwin")
 	# macOS builds
@@ -174,18 +191,19 @@ endif()
 set(CPACK_RPM_PACKAGE_SUMMARY   "Innovative 3D real-time strategy")
 set(CPACK_RPM_PACKAGE_GROUP     "Amusements/Games")
 set(CPACK_RPM_PACKAGE_LICENSE   "GPLv2+ and CC-BY-SA")
-set(CPACK_RPM_PACKAGE_URL       "http://wz2100.net/")
-
-set(CPACK_RPM_PACKAGE_DESCRIPTION "Warzone 2100 was one of the first 3D RTS games ever. It was released commercially by Pumpkin Studios in 1999, and released in 2004 under the GPL. Development is continued by the Warzone 2100 Project to produce this improved version.")
+set(CPACK_RPM_PACKAGE_URL       "https://wz2100.net/")
 
 #####################
 # DEB Settings
 
+set(CPACK_DEBIAN_PACKAGE_NAME "warzone2100")
 set(CPACK_DEBIAN_PACKAGE_SECTION  "games")
-set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "http://wz2100.net/")
+set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://wz2100.net/")
 
 set(CPACK_DEBIAN_ENABLE_COMPONENT_DEPENDS ON)
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+
+set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "Innovative 3D real-time strategy\n In Warzone 2100 you command the forces of “The Project” in a battle to rebuild the world after mankind has been nearly destroyed by nuclear missiles.\n .\n The game offers campaign, tutorial, multi-player and single-player skirmish modes. An extensive tech tree with over 400 different technologies, combined with the unit design system, allows for a wide variety of possible units and tactics. Play versus AI bots in local skirmishes (or as added teammates / enemies in multiplayer), and practice your skills with endless replayability.\n .\n Warzone 2100 was originally created by Pumpkin Studios and published by Eidos Interactive, and was open-sourced in 2004. It has been developed, maintained, and improved by the community ever since, under the banner of the “Warzone 2100 Project”.\n .\n This package does not include the campaign video sequences - please see the Warzone 2100 website for details on how to download and install them.")
 
 #####################
 # Package Source
@@ -204,6 +222,16 @@ list (APPEND CPACK_SOURCE_IGNORE_FILES "/\\\\.svn")
 list (APPEND CPACK_SOURCE_IGNORE_FILES "/\\\\.hg/")
 list (APPEND CPACK_SOURCE_IGNORE_FILES "/\\\\.bzr/")
 
+# Ignore various CI / Github-config related files
+list (APPEND CPACK_SOURCE_IGNORE_FILES "/\\\\.ci/")
+list (APPEND CPACK_SOURCE_IGNORE_FILES "/\\\\.github/")
+list (APPEND CPACK_SOURCE_IGNORE_FILES "/\\\\.cirrus.yml")
+list (APPEND CPACK_SOURCE_IGNORE_FILES "/\\\\.lgtm.yml")
+list (APPEND CPACK_SOURCE_IGNORE_FILES "/\\\\.travis.yml")
+list (APPEND CPACK_SOURCE_IGNORE_FILES "/\\\\appveyor.yml")
+list (APPEND CPACK_SOURCE_IGNORE_FILES "/\\\\azure-pipelines.yml")
+list (APPEND CPACK_SOURCE_IGNORE_FILES "/\\\\crowdin.yml")
+
 # Ignore development / runtime created files
 list (APPEND CPACK_SOURCE_IGNORE_FILES "~$")
 list (APPEND CPACK_SOURCE_IGNORE_FILES "\\\\.DS_Store$")
@@ -216,7 +244,7 @@ list (APPEND CPACK_SOURCE_IGNORE_FILES "/data/sequences.wz")
 
 # Ignore any autorevision.cache file in the src directory
 # (the install script below handles generating a fresh one)
-list (APPEND CPACK_SOURCE_IGNORE_FILES "/src/autorevision.cache")
+list (APPEND CPACK_SOURCE_IGNORE_FILES "/build_tools/autorevision.cache")
 
 # The macosx build directories
 list (APPEND CPACK_SOURCE_IGNORE_FILES "/macosx/build/")

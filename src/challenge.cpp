@@ -25,6 +25,7 @@
 
 #include <physfs.h>
 #include <ctime>
+#include <string>
 
 #include "lib/framework/frame.h"
 #include "lib/framework/input.h"
@@ -42,6 +43,7 @@
 #include "multiplay.h"
 #include "mission.h"
 #include "titleui/titleui.h"
+#include "titleui/multiplayer.h"
 
 #define totalslots 36			// challenge slots
 #define slotsInColumn 12		// # of slots in a column
@@ -72,6 +74,7 @@ static	W_SCREEN	*psRequestScreen;					// Widget screen for requester
 
 bool		challengesUp = false;		///< True when interface is up and should be run.
 bool		challengeActive = false;	///< Whether we are running a challenge
+std::string challengeName;
 
 static void displayLoadBanner(WIDGET *psWidget, UDWORD xOffset, UDWORD yOffset)
 {
@@ -81,6 +84,15 @@ static void displayLoadBanner(WIDGET *psWidget, UDWORD xOffset, UDWORD yOffset)
 
 	pie_BoxFill(x, y, x + psWidget->width(), y + psWidget->height(), col);
 	pie_BoxFill(x + 2, y + 2, x + psWidget->width() - 2, y + psWidget->height() - 2, WZCOL_MENU_BACKGROUND);
+}
+
+const char* currentChallengeName()
+{
+	if (challengeActive)
+	{
+		return challengeName.c_str();
+	}
+	return nullptr;
 }
 
 // quite the hack, game name is stored in global sRequestResult
@@ -204,19 +216,6 @@ bool addChallenges()
 	sFormInit.UserData = 0;
 	widgAddForm(psRequestScreen, &sFormInit);
 
-	// Add Banner Label
-	W_LABINIT sLabInit;
-	sLabInit.formID		= CHALLENGE_BANNER;
-	sLabInit.FontID		= font_large;
-	sLabInit.id		= CHALLENGE_LABEL;
-	sLabInit.style		= WLAB_ALIGNCENTRE;
-	sLabInit.x		= 0;
-	sLabInit.y		= 0;
-	sLabInit.width		= CHALLENGE_W - (2 * CHALLENGE_HGAP);	//CHALLENGE_W;
-	sLabInit.height		= CHALLENGE_BANNER_DEPTH;		//This looks right -Q
-	sLabInit.pText		= WzString::fromUtf8("Challenge");
-	widgAddLabel(psRequestScreen, &sLabInit);
-
 	// add cancel.
 	W_BUTINIT sButInit;
 	sButInit.formID = CHALLENGE_BANNER;
@@ -230,6 +229,19 @@ bool addChallenges()
 	sButInit.pTip = _("Close");
 	sButInit.pDisplay = intDisplayImageHilight;
 	widgAddButton(psRequestScreen, &sButInit);
+
+	// Add Banner Label
+	W_LABINIT sLabInit;
+	sLabInit.formID		= CHALLENGE_BANNER;
+	sLabInit.FontID		= font_large;
+	sLabInit.id		= CHALLENGE_LABEL;
+	sLabInit.style		= WLAB_ALIGNCENTRE;
+	sLabInit.x		= 0;
+	sLabInit.y		= 0;
+	sLabInit.width		= CHALLENGE_W - (2 * CHALLENGE_HGAP);	//CHALLENGE_W;
+	sLabInit.height		= CHALLENGE_BANNER_DEPTH;		//This looks right -Q
+	sLabInit.pText		= WzString::fromUtf8("Challenge");
+	widgAddLabel(psRequestScreen, &sLabInit);
 
 	// add slots
 	sButInit = W_BUTINIT();
@@ -396,6 +408,7 @@ bool runChallenges()
 				assert(data != nullptr);
 				assert(data->filename != nullptr);
 				sstrcpy(sRequestResult, data->filename);
+				challengeName = psWidget->pText.toStdString();
 			}
 			else
 			{
@@ -417,8 +430,8 @@ failure:
 success:
 	closeChallenges();
 	challengeActive = true;
-	ingame.bHostSetup = true;
-	changeTitleUI(std::make_shared<WzMultiOptionTitleUI>(wzTitleUICurrent));
+	ingame.side = InGameSide::HOST_OR_SINGLEPLAYER;
+	changeTitleUI(std::make_shared<WzMultiplayerOptionsTitleUI>(wzTitleUICurrent));
 	return true;
 }
 

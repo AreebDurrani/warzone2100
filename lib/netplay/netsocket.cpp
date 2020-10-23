@@ -825,6 +825,47 @@ void SocketSet_DelSocket(SocketSet *set, Socket *socket)
 	}
 }
 
+#if !defined(SOCK_CLOEXEC)
+static bool setSocketInheritable(SOCKET fd, bool inheritable)
+{
+#if   defined(WZ_OS_UNIX)
+	int sockopts = fcntl(fd, F_SETFD);
+	if (sockopts == SOCKET_ERROR)
+	{
+		debug(LOG_NET, "Failed to retrieve current socket options: %s", strSockError(getSockErr()));
+		return false;
+	}
+
+	// Set or clear FD_CLOEXEC flag
+	if (inheritable)
+	{
+		sockopts &= ~FD_CLOEXEC;
+	}
+	else
+	{
+		sockopts |= FD_CLOEXEC;
+	}
+
+	if (fcntl(fd, F_SETFD, sockopts) == SOCKET_ERROR)
+	{
+		debug(LOG_NET, "Failed to set socket %sinheritable: %s", (inheritable ? "" : "non-"), strSockError(getSockErr()));
+		return false;
+	}
+#elif defined(WZ_OS_WIN)
+	DWORD dwFlags = (inheritable) ? HANDLE_FLAG_INHERIT : 0;
+	if (::SetHandleInformation((HANDLE)fd, HANDLE_FLAG_INHERIT, dwFlags) == 0)
+	{
+		DWORD dwErr = GetLastError();
+		debug(LOG_NET, "Failed to set socket %sinheritable: %s", (inheritable ? "" : "non-"), std::to_string(dwErr).c_str());
+		return false;
+	}
+#endif
+
+	debug(LOG_NET, "Socket is set to %sinheritable.", (inheritable ? "" : "non-"));
+	return true;
+}
+#endif // !defined(SOCK_CLOEXEC)
+
 static bool setSocketBlocking(const SOCKET fd, bool blocking)
 {
 #if   defined(WZ_OS_UNIX)
@@ -1090,7 +1131,11 @@ Socket *socketAccept(Socket *sock)
 			Socket *conn;
 			unsigned int j;
 
+#if defined(SOCK_CLOEXEC)
+			const SOCKET newConn = accept4(sock->fd[i], (struct sockaddr *)&addr, &addr_len, SOCK_CLOEXEC);
+#else
 			const SOCKET newConn = accept(sock->fd[i], (struct sockaddr *)&addr, &addr_len);
+#endif
 			if (newConn == INVALID_SOCKET)
 			{
 				// Ignore the case where no connection is pending
@@ -1110,6 +1155,14 @@ Socket *socketAccept(Socket *sock)
 				abort();
 				return nullptr;
 			}
+
+#if !defined(SOCK_CLOEXEC)
+			if (!setSocketInheritable(newConn, false))
+			{
+				debug(LOG_NET, "Couldn't set socket (%p) inheritable status (false). Ignoring...", static_cast<void *>(conn));
+				// ignore and continue
+			}
+#endif
 
 			debug(LOG_NET, "setting socket (%p) blocking status (false).", static_cast<void *>(conn));
 			if (!setSocketBlocking(newConn, false))
@@ -1172,7 +1225,11 @@ Socket *socketOpen(const SocketAddress *addr, unsigned timeout)
 		conn->fd[i] = INVALID_SOCKET;
 	}
 
-	conn->fd[SOCK_CONNECTION] = socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol);
+	int socket_type = addr->ai_socktype;
+#if defined(SOCK_CLOEXEC)
+	socket_type |= SOCK_CLOEXEC;
+#endif
+	conn->fd[SOCK_CONNECTION] = socket(addr->ai_family, socket_type, addr->ai_protocol);
 
 	if (conn->fd[SOCK_CONNECTION] == INVALID_SOCKET)
 	{
@@ -1180,6 +1237,14 @@ Socket *socketOpen(const SocketAddress *addr, unsigned timeout)
 		socketClose(conn);
 		return nullptr;
 	}
+
+#if !defined(SOCK_CLOEXEC)
+	if (!setSocketInheritable(conn->fd[SOCK_CONNECTION], false))
+	{
+		debug(LOG_NET, "Couldn't set socket (%p) inheritable status (false). Ignoring...", static_cast<void *>(conn));
+		// ignore and continue
+	}
+#endif
 
 	debug(LOG_NET, "setting socket (%p) blocking status (false).", static_cast<void *>(conn));
 	if (!setSocketBlocking(conn->fd[SOCK_CONNECTION], false))
@@ -1309,8 +1374,12 @@ Socket *socketListen(unsigned int port)
 	addr6.sin6_flowinfo = 0;
 	addr6.sin6_scope_id = 0;
 
-	conn->fd[SOCK_IPV4_LISTEN] = socket(addr4.sin_family, SOCK_STREAM, 0);
-	conn->fd[SOCK_IPV6_LISTEN] = socket(addr6.sin6_family, SOCK_STREAM, 0);
+	int socket_type = SOCK_STREAM;
+#if defined(SOCK_CLOEXEC)
+	socket_type |= SOCK_CLOEXEC;
+#endif
+	conn->fd[SOCK_IPV4_LISTEN] = socket(addr4.sin_family, socket_type, 0);
+	conn->fd[SOCK_IPV6_LISTEN] = socket(addr6.sin6_family, socket_type, 0);
 
 	if (conn->fd[SOCK_IPV4_LISTEN] == INVALID_SOCKET
 	    && conn->fd[SOCK_IPV6_LISTEN] == INVALID_SOCKET)
@@ -1352,6 +1421,14 @@ Socket *socketListen(unsigned int port)
 
 	if (conn->fd[SOCK_IPV4_LISTEN] != INVALID_SOCKET)
 	{
+#if !defined(SOCK_CLOEXEC)
+		if (!setSocketInheritable(conn->fd[SOCK_IPV4_LISTEN], false))
+		{
+			debug(LOG_NET, "Couldn't set socket (%p) inheritable status (false). Ignoring...", static_cast<void *>(conn));
+			// ignore and continue
+		}
+#endif
+
 		if (setsockopt(conn->fd[SOCK_IPV4_LISTEN], SOL_SOCKET, SO_REUSEADDR, (const char *)&so_reuseaddr, sizeof(so_reuseaddr)) == SOCKET_ERROR)
 		{
 			debug(LOG_WARNING, "Failed to set SO_REUSEADDR on IPv4 socket. Error: %s", strSockError(getSockErr()));
@@ -1374,6 +1451,14 @@ Socket *socketListen(unsigned int port)
 
 	if (conn->fd[SOCK_IPV6_LISTEN] != INVALID_SOCKET)
 	{
+#if !defined(SOCK_CLOEXEC)
+		if (!setSocketInheritable(conn->fd[SOCK_IPV6_LISTEN], false))
+		{
+			debug(LOG_NET, "Couldn't set socket (%p) inheritable status (false). Ignoring...", static_cast<void *>(conn));
+			// ignore and continue
+		}
+#endif
+
 		if (setsockopt(conn->fd[SOCK_IPV6_LISTEN], SOL_SOCKET, SO_REUSEADDR, (const char *)&so_reuseaddr, sizeof(so_reuseaddr)) == SOCKET_ERROR)
 		{
 			debug(LOG_INFO, "Failed to set SO_REUSEADDR on IPv6 socket. Error: %s", strSockError(getSockErr()));
@@ -1442,15 +1527,105 @@ void socketArrayClose(Socket **sockets, size_t maxSockets)
 	std::fill(sockets, sockets + maxSockets, (Socket *)nullptr);      // Set the pointers to NULL.
 }
 
+WZ_DECL_NONNULL(1) bool socketHasIPv4(Socket *sock)
+{
+	if (sock->fd[SOCK_IPV4_LISTEN] != INVALID_SOCKET)
+	{
+		return true;
+	}
+	else
+	{
+#if defined(IPV6_V6ONLY)
+		if (sock->fd[SOCK_IPV6_LISTEN] != INVALID_SOCKET)
+		{
+			int ipv6_v6only = 1;
+			socklen_t len = sizeof(ipv6_v6only);
+			if (getsockopt(sock->fd[SOCK_IPV6_LISTEN], IPPROTO_IPV6, IPV6_V6ONLY, (char *)&ipv6_v6only, &len) == 0)
+			{
+				return ipv6_v6only == 0;
+			}
+		}
+#endif
+		return false;
+	}
+}
+
+WZ_DECL_NONNULL(1) bool socketHasIPv6(Socket *sock)
+{
+	return sock->fd[SOCK_IPV6_LISTEN] != INVALID_SOCKET;
+}
+
 char const *getSocketTextAddress(Socket const *sock)
 {
 	return sock->textAddress;
 }
 
+std::vector<unsigned char> ipv4_AddressString_To_NetBinary(const std::string& ipv4Address)
+{
+	std::vector<unsigned char> binaryForm(sizeof(struct in_addr), 0);
+	if (inet_pton(AF_INET, ipv4Address.c_str(), binaryForm.data()) <= 0)
+	{
+		// inet_pton failed
+		binaryForm.clear();
+	}
+	return binaryForm;
+}
+
+#ifndef INET_ADDRSTRLEN
+# define INET_ADDRSTRLEN 16
+#endif
+
+std::string ipv4_NetBinary_To_AddressString(const std::vector<unsigned char>& ip4NetBinaryForm)
+{
+	if (ip4NetBinaryForm.size() != sizeof(struct in_addr))
+	{
+		return "";
+	}
+
+	char buf[INET_ADDRSTRLEN] = {0};
+	if (inet_ntop(AF_INET, ip4NetBinaryForm.data(), buf, sizeof(buf)) == nullptr)
+	{
+		return "";
+	}
+	std::string ipv4Address = buf;
+	return ipv4Address;
+}
+
+std::vector<unsigned char> ipv6_AddressString_To_NetBinary(const std::string& ipv6Address)
+{
+	std::vector<unsigned char> binaryForm(sizeof(struct in6_addr), 0);
+	if (inet_pton(AF_INET6, ipv6Address.c_str(), binaryForm.data()) <= 0)
+	{
+		// inet_pton failed
+		binaryForm.clear();
+	}
+	return binaryForm;
+}
+
+#ifndef INET6_ADDRSTRLEN
+# define INET6_ADDRSTRLEN 46
+#endif
+
+std::string ipv6_NetBinary_To_AddressString(const std::vector<unsigned char>& ip6NetBinaryForm)
+{
+	if (ip6NetBinaryForm.size() != sizeof(struct in6_addr))
+	{
+		return "";
+	}
+
+	char buf[INET6_ADDRSTRLEN] = {0};
+	if (inet_ntop(AF_INET6, ip6NetBinaryForm.data(), buf, sizeof(buf)) == nullptr)
+	{
+		return "";
+	}
+	std::string ipv6Address = buf;
+	return ipv6Address;
+}
+
 SocketAddress *resolveHost(const char *host, unsigned int port)
 {
 	struct addrinfo *results;
-	char *service;
+	std::string service;
 	struct addrinfo hint;
 	int error, flags = 0;
 
@@ -1469,12 +1644,12 @@ SocketAddress *resolveHost(const char *host, unsigned int port)
 	hint.ai_canonname = nullptr;
 	hint.ai_next      = nullptr;
 
-	sasprintf(&service, "%u", port);
+	service = astringf("%u", port);
 
-	error = getaddrinfo(host, service, &hint, &results);
+	error = getaddrinfo(host, service.c_str(), &hint, &results);
 	if (error != 0)
 	{
-		debug(LOG_NET, "getaddrinfo failed for %s:%s: %s", host, service, gai_strerror(error));
+		debug(LOG_NET, "getaddrinfo failed for %s:%s: %s", host, service.c_str(), gai_strerror(error));
 		return nullptr;
 	}
 

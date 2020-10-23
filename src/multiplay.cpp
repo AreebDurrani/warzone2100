@@ -29,6 +29,7 @@
 #include <chrono>
 
 #include "lib/framework/frame.h"
+#include "lib/ivis_opengl/piepalette.h" // for pal_Init()
 #include "lib/framework/input.h"
 #include "lib/framework/strres.h"
 #include "lib/framework/physfs_ext.h"
@@ -73,6 +74,7 @@
 #include "cheat.h"
 #include "main.h"								// for gamemode
 #include "multiint.h"
+#include "activity.h"
 
 // ////////////////////////////////////////////////////////////////////////////
 // ////////////////////////////////////////////////////////////////////////////
@@ -261,7 +263,7 @@ bool multiPlayerLoop()
 					{
 						char msg[256] = {'\0'};
 
-						sprintf(msg, _("Kicking player %s, because they tried to bypass data integrity check!"), getPlayerName(index));
+						snprintf(msg, sizeof(msg), _("Kicking player %s, because they tried to bypass data integrity check!"), getPlayerName(index));
 						sendTextMessage(msg, true);
 						addConsoleMessage(msg, LEFT_JUSTIFY, NOTIFY_MESSAGE);
 						NETlogEntry(msg, SYNC_FLAG, index);
@@ -760,6 +762,7 @@ bool recvMessage()
 				{
 					MultiPlayerLeave(player_id);		// get rid of their stuff
 					NET_InitPlayer(player_id, false);
+					ActivityManager::instance().updateMultiplayGameData(game, ingame, NETGameIsLocked());
 				}
 				NETsetPlayerConnectionStatus(CONNECTIONSTATUS_PLAYER_DROPPED, player_id);
 				break;
@@ -838,6 +841,7 @@ bool recvMessage()
 				{
 					debug(LOG_ERROR, "You were kicked because %s", reason);
 					setPlayerHasLost(true);
+					ActivityManager::instance().wasKickedByPlayer(NetPlay.players[queue.index], KICK_TYPE, reason);
 				}
 				else
 				{
@@ -943,7 +947,7 @@ static bool recvResearch(NETQUEUE queue)
 	}
 
 	// Update allies research accordingly
-	if (game.type == SKIRMISH)
+	if (game.type == LEVEL_TYPE::SKIRMISH)
 	{
 		for (i = 0; i < MAX_PLAYERS; i++)
 		{
@@ -1007,7 +1011,7 @@ STRUCTURE *findResearchingFacilityByResearchIndex(unsigned player, unsigned inde
 	{
 		if (psBuilding->pStructureType->type == REF_RESEARCH
 		    && ((RESEARCH_FACILITY *)psBuilding->pFunctionality)->psSubject
-		    && ((RESEARCH_FACILITY *)psBuilding->pFunctionality)->psSubject->ref - REF_RESEARCH_START == index)
+		    && ((RESEARCH_FACILITY *)psBuilding->pFunctionality)->psSubject->ref - STAT_RESEARCH == index)
 		{
 			return psBuilding;
 		}
@@ -1138,7 +1142,19 @@ static void printchatmsg(const char *text, int from, bool team = false)
 {
 	char msg[MAX_CONSOLE_STRING_LENGTH];
 
-	sstrcpy(msg, getPlayerName(from));
+	time_t current_time;
+	time(&current_time);
+	struct tm time_info;
+#if defined(WZ_OS_WIN)
+	gmtime_s(&time_info, &current_time);
+#else
+	gmtime_r(&current_time, &time_info);
+#endif
+	char time_str[9];
+	ssprintf(time_str, "[%d:%d] ", time_info.tm_hour, time_info.tm_min);
+
+	sstrcpy(msg, time_str);
+	sstrcat(msg, getPlayerName(from));
 	if (from == selectedPlayer && GetGameMode() == GS_NORMAL)
 	{
 		if (team)
@@ -1259,7 +1275,7 @@ bool sendTextMessage(const char *pStr, bool all, uint32_t from)
 			{
 				sstrcat(display, ", ");
 			}
-			if ((isHumanPlayer(i) || (game.type == SKIRMISH && i < game.maxPlayers && game.skDiff[i])))
+			if ((isHumanPlayer(i) || (game.type == LEVEL_TYPE::SKIRMISH && i < game.maxPlayers && NetPlay.players[i].difficulty != AIDifficulty::DISABLED)))
 			{
 				sstrcat(display, getPlayerName(posTable[curStr[0] - '0']));
 				sendto[i] = true;
@@ -1623,13 +1639,15 @@ bool recvMapFileRequested(NETQUEUE queue)
 		abort();
 	}
 
-	debug(LOG_INFO, "File is valid, sending [directory: %s] %s to client %u", PHYSFS_getRealDir(filename.c_str()), filename.c_str(), player);
-
 	PHYSFS_sint64 fileSize_64 = PHYSFS_fileLength(pFileHandle);
-	ASSERT_OR_RETURN(false, fileSize_64 <= 0xFFFFFFFF, "File too big!");
+	ASSERT_OR_RETURN(false, fileSize_64 <= 0xFFFFFFFF, "File is too big!");
+	ASSERT_OR_RETURN(false, fileSize_64 >= 0, "Filesize < 0; can't be determined");
+	uint32_t fileSize_u32 = (uint32_t)fileSize_64;
+	ASSERT_OR_RETURN(false, fileSize_u32 <= MAX_NET_TRANSFERRABLE_FILE_SIZE, "Filesize is too large; (size: %" PRIu32")", fileSize_u32);
 
 	// Schedule file to be sent.
-	files.emplace_back(pFileHandle, hash, (uint32_t)fileSize_64);
+	debug(LOG_INFO, "File is valid, sending [directory: %s] %s to client %u", WZ_PHYSFS_getRealDir_String(filename.c_str()).c_str(), filename.c_str(), player);
+	files.emplace_back(pFileHandle, filename, hash, fileSize_u32);
 
 	return true;
 }
@@ -1692,6 +1710,7 @@ bool recvMapFileData(NETQUEUE queue)
 		levShutDown();
 		levInitialise();
 		rebuildSearchPath(mod_multiplay, true);	// MUST rebuild search path for the new maps we just got!
+		pal_Init(); //Update palettes.
 		if (!buildMapList())
 		{
 			return false;
@@ -1712,6 +1731,11 @@ bool recvMapFileData(NETQUEUE queue)
 			addConsoleMessage(buf,  DEFAULT_JUSTIFY, NOTIFY_MESSAGE);
 			game.isMapMod = true;
 			widgReveal(psWScreen, MULTIOP_MAP_MOD);
+		}
+		if (mapData && CheckForRandom(mapData->realFileName, mapData->apDataFiles[0]))
+		{
+			game.isRandom = true;
+			widgReveal(psWScreen, MULTIOP_MAP_RANDOM);
 		}
 
 		loadMapPreview(false);
@@ -1734,7 +1758,7 @@ VIEWDATA *CreateBeaconViewData(SDWORD sender, UDWORD LocX, UDWORD LocY)
 	psViewData = new VIEWDATA;
 
 	//store name
-	sprintf(name, _("Beacon %d"), sender);
+	snprintf(name, sizeof(name), _("Beacon %d"), sender);
 	psViewData->name = name;
 
 	//store text message, hardcoded for now
@@ -1921,7 +1945,7 @@ const char *getPlayerColourName(int player)
 }
 
 /* Reset ready status for all players */
-void resetReadyStatus(bool bSendOptions)
+void resetReadyStatus(bool bSendOptions, bool ignoreReadyReset)
 {
 	// notify all clients if needed
 	if (bSendOptions)
@@ -1931,10 +1955,16 @@ void resetReadyStatus(bool bSendOptions)
 	netPlayersUpdated = true;
 
 	//Really reset ready status
-	if (NetPlay.isHost)
+	if (NetPlay.isHost && !ignoreReadyReset)
 	{
 		for (unsigned int i = 0; i < game.maxPlayers; ++i)
 		{
+			//Ignore for autohost launch option.
+			if (selectedPlayer == i && hostlaunch == HostLaunch::Autohost)
+			{
+				continue;
+			}
+
 			if (isHumanPlayer(i) && ingame.JoiningInProgress[i])
 			{
 				changeReadyStatus(i, false);

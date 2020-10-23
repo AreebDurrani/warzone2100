@@ -4,8 +4,8 @@ function switchOffMG()
 {
 	var cyborgThreat = playerCyborgRatio(getMostHarmfulPlayer()) >= subPersonalities[personality].cyborgThreatPercentage;
 	// Will keep using machineguns until the basic laser is available or if the personality
-	// doesn't have the first of its primary weapon line available.
-	if ((cyborgThreat || !componentAvailable(subPersonalities[personality].primaryWeapon.weapons[0].stat)) && !componentAvailable("Laser3BEAMMk1"))
+	// doesn't have the first of its primary weapon or artillery line available.
+	if ((cyborgThreat || !havePrimaryOrArtilleryWeapon()) && !componentAvailable("Laser3BEAMMk1"))
 	{
 		turnOffMG = false;
 	}
@@ -21,7 +21,7 @@ function switchOffMG()
 
 function useLasersForCyborgControl()
 {
-	return (componentAvailable("Body12SUP") || isStructureAvailable(structures.vtolPads));
+	return getResearch("R-Struc-Research-Upgrade07").done;
 }
 
 function playerCyborgRatio(player)
@@ -36,7 +36,7 @@ function playerCyborgRatio(player)
 		return enumDroid(player, DROID_CYBORG).length / (enumDroid(player).length + 1);
 	}
 
-	return cacheThis(uncached, [player], undefined, 8000);
+	return cacheThis(uncached, [player], "playerCyborgRatio" + player, 8000);
 }
 
 //Count how many Enemy VTOL units are on the map.
@@ -63,7 +63,7 @@ function countEnemyVTOL(player)
 		return enemyVtolCount;
 	}
 
-	return cacheThis(uncached, [player], undefined, 9000);
+	return cacheThis(uncached, [player], "countEnemyVTOL" + player, 9000);
 }
 
 function playerVtolRatio(player)
@@ -78,7 +78,22 @@ function playerVtolRatio(player)
 		return countEnemyVTOL(player) / (enumDroid(player).length + 1);
 	}
 
-	return cacheThis(uncached, [player], undefined, 6000);
+	return cacheThis(uncached, [player], "playerVtolRatio" + player, 6000);
+}
+
+function playerStructureUnitRatio(player)
+{
+	if (!isDefined(player))
+	{
+		player = getMostHarmfulPlayer();
+	}
+
+	function uncached(player)
+	{
+		return enumStruct(player).length / (enumDroid(player).length + 1);
+	}
+
+	return cacheThis(uncached, [player], "playerStructureUnitRatio" + player, 30000);
 }
 
 
@@ -105,32 +120,54 @@ function myPersonality()
 	return personality;
 }
 
-//Choose personality based on map oil/ally count or technology. Called from eventStartLevel().
-function adaptToMap() {
-	var choice = "";
-	var personal;
-	var offset;
-	const ALLY_COUNT = playerAlliance(true).length - 1;
-	const MAP_OIL_LEVEL = mapOilLevel();
+//Semi-randomly choose a personality. Called from eventStartLevel().
+function adaptToMap()
+{
 	const HIGH_TECH_LEVEL = getMultiTechLevel() >= 2;
+	const FRIEND_COUNT = playerAlliance(true).length;
+	var highOil = highOilMap();
+	var personal;
+	var chosen;
 
-	if (!HIGH_TECH_LEVEL && (((maxPlayers - 1) === 1) || ((MAP_OIL_LEVEL === "LOW") && !ALLY_COUNT)))
+	//Map to allow a higher chance for a specific personality to be chosen.
+	if (HIGH_TECH_LEVEL || highOil)
 	{
-		personal = ["AM", "AR", "AB", "AC"];
-		choice = personal[random(personal.length)];
-	}
-	else if ((MAP_OIL_LEVEL === "MEDIUM") || ALLY_COUNT)
-	{
-		personal = ["AM", "AR", "AB", "AC", "AA", "AL"];
-		offset = (HIGH_TECH_LEVEL && (baseType !== CAMP_CLEAN)) ? 6 : 5;
-		choice = personal[random(offset)];
+		personal = [
+			"AR", "AR", "AR", "AR", "AR",
+			"AB", "AB", "AB", "AB", "AB", "AB", "AB", "AB", "AB",
+			"AC", "AC", "AC", "AC", "AC", "AC", "AC", "AC", "AC",
+			"AA", "AA", "AA",
+		];
 	}
 	else
 	{
-		personal = ["AC", "AB", "AA", "AL"];
-		offset = (HIGH_TECH_LEVEL && (baseType !== CAMP_CLEAN)) ? 4 : 3;
-		choice = personal[random(offset)];
+		personal = [
+			"AM", "AM", "AM", "AM",
+			"AR", "AR", "AR", "AR", "AR",
+			"AB", "AB", "AB", "AB", "AB", "AB", "AB",
+			"AC", "AC", "AC", "AC", "AC", "AC", "AC",
+			"AA", "AA",
+		];
 	}
 
-	return choice;
+	chosen = personal[random(personal.length)];
+
+	//Some personalities should only be chosen if accompanied by a friend
+	while ((subPersonalities[chosen].canPlayBySelf === false) && (FRIEND_COUNT === 0))
+	{
+		chosen = personal[random(personal.length)];
+	}
+
+	//Offensive is better for high oil
+	if (highOil)
+	{
+		subPersonalities[chosen].resPath = "offensive";
+
+		if ((HIGH_TECH_LEVEL || (baseType >= CAMP_BASE)) && random(100) < 33)
+		{
+			subPersonalities[chosen].resPath = "air";
+		}
+	}
+
+	return chosen;
 }

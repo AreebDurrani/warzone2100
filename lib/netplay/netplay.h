@@ -30,6 +30,7 @@
 #include "nettypes.h"
 #include <physfs.h>
 #include <vector>
+#include <functional>
 // Lobby Connection errors
 
 enum LOBBY_ERROR_TYPES
@@ -89,7 +90,8 @@ enum MESSAGE_TYPES
 	NET_FILE_CANCELLED,             ///< Player cancelled a file request
 	NET_FILE_PAYLOAD,               ///< sending file to the player that needs it
 	NET_DEBUG_SYNC,                 ///< Synch error messages, so people don't have to use pastebin.
-	NET_VOTE,                       ///< vote request
+	NET_VOTE,                       ///< player vote
+	NET_VOTE_REQUEST,               ///< Setup a vote popup
 	NET_MAX_TYPE,                   ///< Maximum+1 valid NET_ type, *MUST* be last.
 
 	// Game-state-related messages, must be processed by all clients at the same game time.
@@ -124,6 +126,7 @@ enum MESSAGE_TYPES
 #define WZ_SERVER_DISCONNECT 0
 #define WZ_SERVER_CONNECT    1
 #define WZ_SERVER_UPDATE     3
+#define WZ_SERVER_KEEPALIVE  4
 
 // Constants
 // @NOTE / FIXME: We need a way to detect what should happen if the msg buffer exceeds this.
@@ -138,6 +141,8 @@ enum MESSAGE_TYPES
 
 #define MAX_CONNECTED_PLAYERS   MAX_PLAYERS
 #define MAX_TMP_SOCKETS         16
+
+#define MAX_NET_TRANSFERRABLE_FILE_SIZE	0x8000000
 
 struct SESSIONDESC  //Available game storage... JUST FOR REFERENCE!
 {
@@ -202,17 +207,24 @@ struct SYNC_COUNTER
 struct WZFile
 {
 	//WZFile() : handle(nullptr), size(0), pos(0) { hash.setZero(); }
-	WZFile(PHYSFS_file *handle, Sha256 hash, uint32_t size = 0) : handle(handle), hash(hash), size(size), pos(0) {}
+	WZFile(PHYSFS_file *handle, const std::string &filename, Sha256 hash, uint32_t size = 0) : handle(handle), filename(filename), hash(hash), size(size), pos(0) {}
 
 	PHYSFS_file *handle;
+	std::string filename;
 	Sha256 hash;
 	uint32_t size;
 	uint32_t pos;  // Current position, the range [0; currPos[ has been sent or received already.
 };
 
-enum
+enum class AIDifficulty : int8_t
 {
-	DIFFICULTY_EASY, DIFFICULTY_MEDIUM, DIFFICULTY_HARD, DIFFICULTY_INSANE
+	EASY,
+	MEDIUM,
+	HARD,
+	INSANE,
+	DEFAULT = MEDIUM,
+	DISABLED = -1,
+	HUMAN = -2,
 };
 
 enum class NET_LOBBY_OPT_FIELD
@@ -229,29 +241,28 @@ enum class NET_LOBBY_OPT_FIELD
 // currently controlled player.
 struct PLAYER
 {
-	char		name[StringSize];	///< Player name
-	int32_t		position;		///< Map starting position
-	int32_t		colour;			///< Which colour slot this player is using
-	bool		allocated;		///< Allocated as a human player
-	uint32_t	heartattacktime;	///< Time cardiac arrest started
-	bool		heartbeat;		///< If we are still alive or not
-	bool		kick;			///< If we should kick them
-	int32_t		connection;		///< Index into connection list
-	int32_t		team;			///< Which team we are on
-	bool		ready;			///< player ready to start?
-	int8_t		ai;			///< index into sorted list of AIs, zero is always default AI
-	int8_t		difficulty;		///< difficulty level of AI
-	bool		autoGame;		// if we are running a autogame (AI controls us)
-	std::vector<WZFile> wzFiles;    ///< for each player, we keep track of map/mod download progress
-	char		IPtextAddress[40];	///< IP of this player
+	char                name[StringSize];   ///< Player name
+	int32_t             position;           ///< Map starting position
+	int32_t             colour;             ///< Which colour slot this player is using
+	bool                allocated;          ///< Allocated as a human player
+	uint32_t            heartattacktime;    ///< Time cardiac arrest started
+	bool                heartbeat;          ///< If we are still alive or not
+	bool                kick;               ///< If we should kick them
+	int32_t             connection;         ///< Index into connection list
+	int32_t             team;               ///< Which team we are on
+	bool                ready;              ///< player ready to start?
+	int8_t              ai;                 ///< index into sorted list of AIs, zero is always default AI
+	AIDifficulty        difficulty;         ///< difficulty level of AI
+	bool                autoGame;           ///< if we are running a autogame (AI controls us)
+	std::vector<WZFile> wzFiles;            ///< for each player, we keep track of map/mod download progress
+	char                IPtextAddress[40];  ///< IP of this player
 };
 
 // ////////////////////////////////////////////////////////////////////////
 // all the luvly Netplay info....
 struct NETPLAY
 {
-	GAMESTRUCT	games[MaxGames];	///< The collection of games
-	PLAYER		players[MAX_PLAYERS];	///< The array of players.
+	std::vector<PLAYER>	players;	///< The array of players.
 	uint32_t	playercount;		///< Number of players in game.
 	uint32_t	hostPlayer;		///< Index of host in player array
 	uint32_t	bComms;			///< Actually do the comms?
@@ -267,6 +278,11 @@ struct NETPLAY
 	bool HaveUpgrade;					// game updates available
 	char MOTDbuffer[255];				// buffer for MOTD
 	char *MOTD;
+
+	NETPLAY()
+	{
+		players.resize(MAX_PLAYERS);
+	}
 };
 
 struct PLAYER_IP
@@ -284,6 +300,14 @@ extern PLAYER_IP	*IPlist;
 // update flags
 extern bool netPlayersUpdated;
 extern char iptoconnect[PATH_MAX]; // holds IP/hostname from command line
+
+#define ASSERT_HOST_ONLY(failAction) \
+	if (!NetPlay.isHost) \
+	{ \
+		ASSERT(false, "Host only routine detected for client!"); \
+		failAction; \
+	}
+
 
 // ////////////////////////////////////////////////////////////////////////
 // functions available to you.
@@ -311,10 +335,12 @@ void NETplayerKicked(UDWORD index);			// Cleanup after player has been kicked
 
 // from netjoin.c
 SDWORD NETgetGameFlags(UDWORD flag);			// return one of the four flags(dword) about the game.
-int32_t NETgetGameFlagsUnjoined(unsigned int gameid, unsigned int flag);	// return one of the four flags(dword) about the game.
+int32_t NETgetGameFlagsUnjoined(const GAMESTRUCT& game, unsigned int flag);	// return one of the four flags(dword) about the game.
 bool NETsetGameFlags(UDWORD flag, SDWORD value);	// set game flag(1-4) to value.
 bool NEThaltJoining();				// stop new players joining this game
-bool NETfindGame();		// find games being played(uses GAME_GUID);
+bool NETenumerateGames(const std::function<bool (const GAMESTRUCT& game)>& handleEnumerateGameFunc);
+bool NETfindGames(std::vector<GAMESTRUCT>& results, size_t startingIndex, size_t resultsLimit, bool onlyMatchingLocalVersion = false);
+bool NETfindGame(uint32_t gameId, GAMESTRUCT& output);
 bool NETjoinGame(const char *host, uint32_t port, const char *playername); // join game given with playername
 bool NEThostGame(const char *SessionName, const char *PlayerName,// host a game
                  SDWORD one, SDWORD two, SDWORD three, SDWORD four, UDWORD plyrs);
@@ -329,6 +355,8 @@ void NETsetMasterserverPort(unsigned int port);
 unsigned int NETgetMasterserverPort();
 void NETsetGameserverPort(unsigned int port);
 unsigned int NETgetGameserverPort();
+void NETsetJoinPreferenceIPv6(bool bTryIPv6First);
+bool NETgetJoinPreferenceIPv6();
 
 bool NETsetupTCPIP(const char *machine);
 void NETsetGamePassword(const char *password);
@@ -344,9 +372,11 @@ uint8_t NET_numHumanPlayers(void);
 void NETsetLobbyOptField(const char *Value, const NET_LOBBY_OPT_FIELD Field);
 std::vector<uint8_t> NET_getHumanPlayers(void);
 
+bool NETGameIsLocked();
 void NETGameLocked(bool flag);
 void NETresetGamePassword();
-void NETregisterServer(int state);
+bool NETregisterServer(int state);
+bool NETprocessQueuedServerUpdates();
 void NETsetPlayerConnectionStatus(CONNECTION_STATUS status, unsigned player);    ///< Cumulative, except that CONNECTIONSTATUS_NORMAL resets.
 bool NETcheckPlayerConnectionStatus(CONNECTION_STATUS status, unsigned player);  ///< True iff connection status icon hasn't expired for this player. CONNECTIONSTATUS_NORMAL means any status, NET_ALL_PLAYERS means all players.
 

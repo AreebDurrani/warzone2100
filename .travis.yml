@@ -3,50 +3,6 @@ branches:
   - /^l10n_.*$/
 matrix:
   include:
-    # Build for Ubuntu 16.04 (Makefile) (GCC)
-    - name: "Ubuntu 16.04 (Makefile) [GCC]"
-      language: cpp
-      compiler: gcc
-      sudo: required
-      services:
-        - docker
-      install:
-        - cd docker/ubuntu-16.04/
-        - docker build -t ubuntu .
-        - cd ../..
-      script:
-        - export MAKEFLAGS="-j$((`grep -c ^processor /proc/cpuinfo`*2))"
-        # Must supply the TRAVIS environment variables to the docker container so autorevision properly receives the revision info from Travis
-        # To do this, append the following to the pertinent lines after —rm:
-        # -e CI -e TRAVIS -e "TRAVIS_BUILD_DIR=/code" -e TRAVIS_BRANCH -e TRAVIS_COMMIT -e TRAVIS_PULL_REQUEST_BRANCH -e TRAVIS_TAG
-        - docker run --rm -v $(pwd):/code ubuntu ./autogen.sh
-        - docker run --rm -e MAKEFLAGS -v $(pwd):/code ubuntu ./configure --enable-promise-to-use-cmake
-        - docker run --rm -e CI -e TRAVIS -e "TRAVIS_BUILD_DIR=/code" -e TRAVIS_BRANCH -e TRAVIS_COMMIT -e TRAVIS_PULL_REQUEST_BRANCH -e TRAVIS_TAG -e MAKEFLAGS -v $(pwd):/code ubuntu make
-        - docker run --rm -e CI -e TRAVIS -e "TRAVIS_BUILD_DIR=/code" -e TRAVIS_BRANCH -e TRAVIS_COMMIT -e TRAVIS_PULL_REQUEST_BRANCH -e TRAVIS_TAG -e MAKEFLAGS -v $(pwd):/code ubuntu make check
-        - docker run --rm -e CI -e TRAVIS -e "TRAVIS_BUILD_DIR=/code" -e TRAVIS_BRANCH -e TRAVIS_COMMIT -e TRAVIS_PULL_REQUEST_BRANCH -e TRAVIS_TAG -e MAKEFLAGS -v $(pwd):/code ubuntu sudo make install
-
-    # Build for Ubuntu 18.04 (Makefile) (GCC)
-    - name: "Ubuntu 18.04 (Makefile) [GCC]"
-      language: cpp
-      compiler: gcc
-      sudo: required
-      services:
-        - docker
-      install:
-        - cd docker/ubuntu-18.04/
-        - docker build -t ubuntu .
-        - cd ../..
-      script:
-        - export MAKEFLAGS="-j$((`grep -c ^processor /proc/cpuinfo`*2))"
-        # Must supply the TRAVIS environment variables to the docker container so autorevision properly receives the revision info from Travis
-        # To do this, append the following to the pertinent lines after —rm:
-        # -e CI -e TRAVIS -e "TRAVIS_BUILD_DIR=/code" -e TRAVIS_BRANCH -e TRAVIS_COMMIT -e TRAVIS_PULL_REQUEST_BRANCH -e TRAVIS_TAG
-        - docker run --rm -v $(pwd):/code ubuntu ./autogen.sh
-        - docker run --rm -e MAKEFLAGS -v $(pwd):/code ubuntu ./configure --enable-promise-to-use-cmake
-        - docker run --rm -e CI -e TRAVIS -e "TRAVIS_BUILD_DIR=/code" -e TRAVIS_BRANCH -e TRAVIS_COMMIT -e TRAVIS_PULL_REQUEST_BRANCH -e TRAVIS_TAG -e MAKEFLAGS -v $(pwd):/code ubuntu make
-        - docker run --rm -e CI -e TRAVIS -e "TRAVIS_BUILD_DIR=/code" -e TRAVIS_BRANCH -e TRAVIS_COMMIT -e TRAVIS_PULL_REQUEST_BRANCH -e TRAVIS_TAG -e MAKEFLAGS -v $(pwd):/code ubuntu make check
-        - docker run --rm -e CI -e TRAVIS -e "TRAVIS_BUILD_DIR=/code" -e TRAVIS_BRANCH -e TRAVIS_COMMIT -e TRAVIS_PULL_REQUEST_BRANCH -e TRAVIS_TAG -e MAKEFLAGS -v $(pwd):/code ubuntu sudo make install
-
     # Build for Ubuntu 18.04 (CMake) (GCC) [ARM64]
     - name: "Ubuntu 18.04 (CMake) [GCC] [ARM64]"
       arch: arm64
@@ -59,6 +15,29 @@ matrix:
         - docker
       install:
         - cd docker/ubuntu-18.04/
+        - travis_wait 50 docker build -t ubuntu -f Dockerfile.arm64 .
+        - cd ../..
+      script:
+        - export MAKEFLAGS="-j$((`grep -c ^processor /proc/cpuinfo`*2))"
+        # Must supply the TRAVIS environment variables to the docker container so autorevision properly receives the revision info from Travis
+        # To do this, append the following to the pertinent lines after —rm:
+        # -e CI -e TRAVIS -e "TRAVIS_BUILD_DIR=/code" -e TRAVIS_BRANCH -e TRAVIS_COMMIT -e TRAVIS_PULL_REQUEST_BRANCH -e TRAVIS_TAG
+        - docker run --rm -e CI -e TRAVIS -e "TRAVIS_BUILD_DIR=/code" -e TRAVIS_BRANCH -e TRAVIS_COMMIT -e TRAVIS_PULL_REQUEST_BRANCH -e TRAVIS_TAG -e MAKEFLAGS -v $(pwd):/code ubuntu cmake -P "/code/.ci/travis/prepare_git_repo.cmake"
+        - docker run --rm -e CI -e TRAVIS -e "TRAVIS_BUILD_DIR=/code" -e TRAVIS_BRANCH -e TRAVIS_COMMIT -e TRAVIS_PULL_REQUEST_BRANCH -e TRAVIS_TAG -e MAKEFLAGS -v $(pwd):/code ubuntu cmake '-H.' -Bbuild -DCMAKE_BUILD_TYPE=RelWithDebInfo -DWZ_ENABLE_WARNINGS:BOOL=ON -G"Ninja"
+        - docker run --rm -e CI -e TRAVIS -e "TRAVIS_BUILD_DIR=/code" -e TRAVIS_BRANCH -e TRAVIS_COMMIT -e TRAVIS_PULL_REQUEST_BRANCH -e TRAVIS_TAG -e MAKEFLAGS -v $(pwd):/code ubuntu cmake --build build
+
+    # Build for Ubuntu 20.04 (CMake) (GCC) [ARM64]
+    - name: "Ubuntu 20.04 (CMake) [GCC] [ARM64]"
+      arch: arm64
+      os: linux
+      dist: xenial
+      language: cpp
+      compiler: gcc
+      sudo: required
+      services:
+        - docker
+      install:
+        - cd docker/ubuntu-20.04/
         - docker build -t ubuntu -f Dockerfile.arm64 .
         - cd ../..
       script:
@@ -66,8 +45,32 @@ matrix:
         # Must supply the TRAVIS environment variables to the docker container so autorevision properly receives the revision info from Travis
         # To do this, append the following to the pertinent lines after —rm:
         # -e CI -e TRAVIS -e "TRAVIS_BUILD_DIR=/code" -e TRAVIS_BRANCH -e TRAVIS_COMMIT -e TRAVIS_PULL_REQUEST_BRANCH -e TRAVIS_TAG
+        - docker run --rm -e CI -e TRAVIS -e "TRAVIS_BUILD_DIR=/code" -e TRAVIS_BRANCH -e TRAVIS_COMMIT -e TRAVIS_PULL_REQUEST_BRANCH -e TRAVIS_TAG -e MAKEFLAGS -v $(pwd):/code ubuntu cmake -P "/code/.ci/travis/prepare_git_repo.cmake"
         - docker run --rm -e CI -e TRAVIS -e "TRAVIS_BUILD_DIR=/code" -e TRAVIS_BRANCH -e TRAVIS_COMMIT -e TRAVIS_PULL_REQUEST_BRANCH -e TRAVIS_TAG -e MAKEFLAGS -v $(pwd):/code ubuntu cmake '-H.' -Bbuild -DCMAKE_BUILD_TYPE=RelWithDebInfo -DWZ_ENABLE_WARNINGS:BOOL=ON -G"Ninja"
         - docker run --rm -e CI -e TRAVIS -e "TRAVIS_BUILD_DIR=/code" -e TRAVIS_BRANCH -e TRAVIS_COMMIT -e TRAVIS_PULL_REQUEST_BRANCH -e TRAVIS_TAG -e MAKEFLAGS -v $(pwd):/code ubuntu cmake --build build
+
+    # Build for Ubuntu 20.04 (CMake) (Clang) [ARM64]
+    - name: "Ubuntu 20.04 (CMake) [Clang] [ARM64]"
+      arch: arm64
+      os: linux
+      dist: xenial
+      language: cpp
+      compiler: clang
+      sudo: required
+      services:
+        - docker
+      install:
+        - cd docker/ubuntu-20.04/
+        - docker build -t ubuntu -f Dockerfile.arm64 .
+        - cd ../..
+      script:
+        - export MAKEFLAGS="-j$((`grep -c ^processor /proc/cpuinfo`*2))"
+        # Must supply the TRAVIS environment variables to the docker container so autorevision properly receives the revision info from Travis
+        # To do this, append the following to the pertinent lines after —rm:
+        # -e CI -e TRAVIS -e "TRAVIS_BUILD_DIR=/code" -e TRAVIS_BRANCH -e TRAVIS_COMMIT -e TRAVIS_PULL_REQUEST_BRANCH -e TRAVIS_TAG
+        - docker run --rm -e "CC=/usr/bin/clang" -e "CXX=/usr/bin/clang++" -e CI -e TRAVIS -e "TRAVIS_BUILD_DIR=/code" -e TRAVIS_BRANCH -e TRAVIS_COMMIT -e TRAVIS_PULL_REQUEST_BRANCH -e TRAVIS_TAG -e MAKEFLAGS -v $(pwd):/code ubuntu cmake -P "/code/.ci/travis/prepare_git_repo.cmake"
+        - docker run --rm -e "CC=/usr/bin/clang" -e "CXX=/usr/bin/clang++" -e CI -e TRAVIS -e "TRAVIS_BUILD_DIR=/code" -e TRAVIS_BRANCH -e TRAVIS_COMMIT -e TRAVIS_PULL_REQUEST_BRANCH -e TRAVIS_TAG -e MAKEFLAGS -v $(pwd):/code ubuntu cmake '-H.' -Bbuild -DCMAKE_BUILD_TYPE=RelWithDebInfo -DWZ_ENABLE_WARNINGS:BOOL=ON -G"Ninja"
+        - docker run --rm -e "CC=/usr/bin/clang" -e "CXX=/usr/bin/clang++" -e CI -e TRAVIS -e "TRAVIS_BUILD_DIR=/code" -e TRAVIS_BRANCH -e TRAVIS_COMMIT -e TRAVIS_PULL_REQUEST_BRANCH -e TRAVIS_TAG -e MAKEFLAGS -v $(pwd):/code ubuntu cmake --build build
 
     # Build for macOS (CMake)
     - name: "macOS (CMake) [Xcode 8.3, macOS 10.12 SDK]"
@@ -93,31 +96,28 @@ matrix:
         - macosx/BuildBot/travis_cmake_build.sh "${WZ_BUILD_DESC_PREFIX}-" "tmp/wz_upload"
       # do not deploy
 
-    # # Build for macOS (CMake)
-    # # (This also deploys the macOS build to the buildbot)
-    # - name: "macOS (CMake) [Xcode 9.4, macOS 10.13 SDK]"
-    #   language: objective-c
-    #   os: osx
-    #   osx_image: xcode9.4
-    #   env:
-    #     - MACOSX_DEPLOYMENT_TARGET=10.10
-    #   before_install:
-    #     - brew update
-    #     - if (brew outdated | grep cmake > /dev/null); then echo "upgrading CMake"; brew upgrade cmake; fi
-    #     - brew install gettext
-    #     # NOTE: Specify an explicit Asciidoctor version to help ensure reproducible builds
-    #     - gem install asciidoctor -v 2.0.10 --no-document
-    #     # gcc6+ is currently required to bootstrap vcpkg on macOS
-    #     - brew install gcc || brew link --overwrite gcc
-    #     - bundle install --gemfile="macosx/BuildBot/Gemfile"
-    #     - cmake --version
-    #   script:
-    #     - source .ci/travis/export_build_output_desc.sh
-    #     - macosx/BuildBot/travis_cmake_build.sh "${WZ_BUILD_DESC_PREFIX}-" "tmp/wz_upload"
-    #   after_success:
-    #     - export DEPLOY_UPLOAD_PATH="${DEPLOY_UPLOAD_PATH}/${WZ_BUILD_DESC_PREFIX}/macOS/"
-    #     - .ci/travis/travis_deploy.sh "tmp/wz_upload" "warzone2100-${WZ_BUILD_DESC_PREFIX}-*_macOS.zip" --cleanold
-    #
+    # Build for macOS (CMake)
+    - name: "macOS (CMake) [Xcode 9.4, macOS 10.13 SDK]"
+      language: objective-c
+      os: osx
+      osx_image: xcode9.4
+      env:
+        - MACOSX_DEPLOYMENT_TARGET=10.10
+      before_install:
+        - brew update
+        - if (brew outdated | grep cmake > /dev/null); then echo "upgrading CMake"; brew upgrade cmake; fi
+        - brew install gettext
+        # NOTE: Specify an explicit Asciidoctor version to help ensure reproducible builds
+        - gem install asciidoctor -v 2.0.10 --no-document
+        # gcc6+ is currently required to bootstrap vcpkg on macOS
+        - brew install gcc || brew link --overwrite gcc
+        - bundle install --gemfile="macosx/BuildBot/Gemfile"
+        - cmake --version
+      script:
+        - source .ci/travis/export_build_output_desc.sh
+        - macosx/BuildBot/travis_cmake_build.sh "${WZ_BUILD_DESC_PREFIX}-" "tmp/wz_upload"
+      # do not deploy
+
     # # Build for macOS (CMake)
     # - name: "macOS (CMake) [Xcode 10.3, macOS 10.14 SDK]"
     #   language: objective-c

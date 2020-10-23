@@ -27,7 +27,6 @@
 #include "lib/framework/input.h"
 #include "lib/framework/strres.h"
 #include "lib/framework/wzapp.h"
-#include "lib/framework/rational.h"
 
 #include "lib/ivis_opengl/pieblitfunc.h"
 #include "lib/ivis_opengl/piestate.h" //ivis render code
@@ -127,7 +126,7 @@ static SDWORD videoMode = 0;
 LOOP_MISSION_STATE		loopMissionState = LMS_NORMAL;
 
 // this is set by scrStartMission to say what type of new level is to be started
-LEVEL_TYPE nextMissionType = LDS_NONE;
+LEVEL_TYPE nextMissionType = LEVEL_TYPE::LDS_NONE;
 
 static GAMECODE renderLoop()
 {
@@ -141,7 +140,6 @@ static GAMECODE renderLoop()
 	wzShowMouse(true);
 
 	INT_RETVAL intRetVal = INT_NONE;
-	CURSOR cursor = CURSOR_DEFAULT;
 	if (!paused)
 	{
 		/* Run the in game interface and see if it grabbed any mouse clicks */
@@ -195,8 +193,7 @@ static GAMECODE renderLoop()
 		}
 		if (!scrollPaused() && dragBox3D.status != DRAG_DRAGGING && intMode != INT_INGAMEOP)
 		{
-			cursor = scroll();
-			zoom();
+			displayRenderLoop();
 		}
 	}
 	else  // paused
@@ -206,8 +203,7 @@ static GAMECODE renderLoop()
 
 		if (dragBox3D.status != DRAG_DRAGGING)
 		{
-			cursor = scroll();
-			zoom();
+			displayRenderLoop();
 		}
 
 		if (InGameOpUp || isInGamePopupUp)		// ingame options menu up, run it!
@@ -307,15 +303,13 @@ static GAMECODE renderLoop()
 			//no key clicks or in Intelligence Screen
 			if (!isMouseOverRadar() && !isDraggingInGameNotification() && intRetVal == INT_NONE && !InGameOpUp && !isInGamePopupUp)
 			{
-				CURSOR cursor2 = processMouseClickInput();
-				cursor = cursor2 == CURSOR_DEFAULT? cursor : cursor2;
+				processMouseClickInput();
 			}
 			bRender3DOnly = false;
 			displayWorld();
 		}
 		wzPerfBegin(PERF_GUI, "User interface");
 		/* Display the in game interface */
-		pie_SetDepthBufferStatus(DEPTH_CMP_ALWAYS_WRT_ON);
 		pie_SetFogStatus(false);
 
 		if (bMultiPlayer && bDisplayMultiJoiningStatus)
@@ -328,12 +322,9 @@ static GAMECODE renderLoop()
 		{
 			intDisplayWidgets();
 		}
-		pie_SetDepthBufferStatus(DEPTH_CMP_LEQ_WRT_ON);
 		pie_SetFogStatus(true);
 		wzPerfEnd(PERF_GUI);
 	}
-
-	wzSetCursor(cursor);
 
 	pie_GetResetCounts(&loopPieCount, &loopPolyCount);
 
@@ -370,7 +361,7 @@ static GAMECODE renderLoop()
 		// just wait for this to be changed when the new mission starts
 		break;
 	case LMS_NEWLEVEL:
-		nextMissionType = LDS_NONE;
+		nextMissionType = LEVEL_TYPE::LDS_NONE;
 		return GAMECODE_NEWLEVEL;
 		break;
 	case LMS_LOADGAME:

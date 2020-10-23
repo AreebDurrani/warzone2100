@@ -1,10 +1,17 @@
 cmake_minimum_required(VERSION 3.5)
 project(warzone2100)
 
+OPTION(ENABLE_DOCS "Enable documentation generation" ON)
 OPTION(ENABLE_NLS "Native Language Support" ON)
 OPTION(WZ_PORTABLE "Portable (Windows-only)" ON)
 OPTION(WZ_ENABLE_WARNINGS "Enable (additional) warnings" OFF)
 OPTION(WZ_ENABLE_WARNINGS_AS_ERRORS "Enable compiler flags that treat (most) warnings as errors" ON)
+OPTION(WZ_ENABLE_BACKEND_VULKAN "Enable Vulkan backend" ON)
+
+if(CMAKE_SYSTEM_NAME MATCHES "Windows" OR CMAKE_SYSTEM_NAME MATCHES "Darwin" OR CMAKE_SYSTEM_NAME MATCHES "Linux")
+	# Only supported on Windows, macOS, and Linux
+	OPTION(ENABLE_DISCORD "Enable Discord presence / join integration" ON)
+endif()
 
 set(WZ_DISTRIBUTOR "UNKNOWN" CACHE STRING "Name of distributor compiling this package")
 
@@ -19,6 +26,9 @@ endif()
 # Disallow in-source builds
 include(DisallowInSourceBuilds)
 
+# Disable CTest targets
+set_property(GLOBAL PROPERTY CTEST_TARGETS_ADDED 1)
+
 if(WZ_ENABLE_WARNINGS)
 	set(WZ_Wno_ "-Wno-error=")
 else()
@@ -27,11 +37,15 @@ endif()
 
 # CXX Standard
 if(MSVC)
+	# MSVC doesn't support enforcing c++11 - the minimum it will allow is c++14
+	# See https://docs.microsoft.com/en-us/cpp/build/reference/std-specify-language-standard-version
+	# However, avoid using any features not supported by c++11 or the build will fail on other platforms.
 	set(CMAKE_CXX_STANDARD 14)
 else()
 	set(CMAKE_CXX_STANDARD 11)
 endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF) # Disable compiler-specific extensions
 
 # Support folders (for nicer IDE organization)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
@@ -60,9 +74,9 @@ if(NOT DEFINED WZ_DATADIR)
 	if(CMAKE_SYSTEM_NAME MATCHES "Windows")
 		set(WZ_DATADIR "${CMAKE_INSTALL_DATAROOTDIR}/data")
 	elseif(CMAKE_SYSTEM_NAME MATCHES "Darwin")
-		set(WZ_DATADIR "${CMAKE_INSTALL_DATAROOTDIR}/warzone2100") # not used on macOS (macOS always creates an app bundle)
+		set(WZ_DATADIR "${CMAKE_INSTALL_DATAROOTDIR}/warzone2100${WZ_OUTPUT_NAME_SUFFIX}") # not used on macOS (macOS always creates an app bundle)
 	else()
-		set(WZ_DATADIR "${CMAKE_INSTALL_DATAROOTDIR}/warzone2100")
+		set(WZ_DATADIR "${CMAKE_INSTALL_DATAROOTDIR}/warzone2100${WZ_OUTPUT_NAME_SUFFIX}")
 	endif()
 endif()
 if(CMAKE_SYSTEM_NAME MATCHES "Windows")
@@ -89,9 +103,6 @@ if(IS_ABSOLUTE "${CMAKE_INSTALL_BINDIR}")
 endif()
 
 if(CMAKE_SYSTEM_NAME MATCHES "Darwin")
-	# Disable compiler-specific extensions for macOS builds
-	set(CMAKE_CXX_EXTENSIONS OFF)
-
 	# Enable macOS-specific find scripts
 	list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/macosx/cmake")
 
@@ -150,7 +161,7 @@ if(CMAKE_SYSTEM_NAME MATCHES "Windows")
 		message( WARNING "WindowsStore builds are not currently supported" )
 		add_definitions(-D_WIN32_WINNT=0x0A00) # Windows 10+
 	else()
-		add_definitions(-D_WIN32_WINNT=0x0501) # Windows XP+
+		add_definitions(-D_WIN32_WINNT=0x0600) # Windows Vista+
 	endif()
 endif()
 
@@ -263,6 +274,11 @@ macro(CONFIGURE_WZ_COMPILER_WARNINGS)
 
 	elseif(CMAKE_GENERATOR STREQUAL "Xcode")
 		# Set Xcode generator project-level configuration + warning flags
+
+		# Generate Xcode Schemes (on CMake 3.14+)
+		if((CMAKE_MAJOR_VERSION GREATER 3) OR (CMAKE_MAJOR_VERSION EQUAL 3 AND CMAKE_MINOR_VERSION GREATER 13))
+			set(CMAKE_XCODE_GENERATE_SCHEME TRUE)
+		endif()
 
 		# Enable Objective-C ARC
 		set(CMAKE_XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES)
@@ -582,10 +598,11 @@ include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 include_directories(".")
 include_directories("3rdparty")
 include_directories(SYSTEM "3rdparty/glm")
+include_directories("3rdparty/date/include")
 
 SET(STDC_HEADERS ON)
 
-SET(PACKAGE "warzone2100")
+SET(PACKAGE "warzone2100${WZ_OUTPUT_NAME_SUFFIX}")
 SET(PACKAGE_BUGREPORT "http://wz2100.net/")
 SET(PACKAGE_NAME "Warzone 2100")
 SET(PACKAGE_TARNAME "warzone2100")
@@ -643,6 +660,9 @@ CHECK_CXX_SYMBOL_EXISTS(strlcat "string.h" HAVE_VALID_STRLCAT)
 CHECK_CXX_SYMBOL_EXISTS(strlcpy "string.h" HAVE_VALID_STRLCPY)
 CHECK_CXX_SYMBOL_EXISTS(putenv "stdlib.h" HAVE_PUTENV)
 CHECK_CXX_SYMBOL_EXISTS(setenv "stdlib.h" HAVE_SETENV)
+CHECK_CXX_SYMBOL_EXISTS(posix_spawn "spawn.h" HAVE_POSIX_SPAWN)
+CHECK_CXX_SYMBOL_EXISTS(posix_spawnp "spawn.h" HAVE_POSIX_SPAWNP)
+CHECK_CXX_SYMBOL_EXISTS(environ "unistd.h" HAVE_ENVIRON_DECL)
 cmake_reset_check_state()
 
 set(WZ_BINDIR "${CMAKE_INSTALL_BINDIR}")
@@ -679,11 +699,22 @@ endif()
 
 add_subdirectory(3rdparty)
 
-set(wz2100_ROOT_FILES ChangeLog AUTHORS COPYING.NONGPL COPYING COPYING.README README.md)
+# Determine distribution license
+set(WZ_DIST_LICENSE "${CMAKE_CURRENT_BINARY_DIR}/dist/COPYING")
+if(WZ_ENABLE_BACKEND_VULKAN)
+	# If Vulkan is enabled, use the GPL3 license for distribution
+	configure_file("${CMAKE_CURRENT_SOURCE_DIR}/pkg/licenses/COPYING.gpl3" "${WZ_DIST_LICENSE}" COPYONLY)
+else()
+	# GPLv2
+	configure_file("${CMAKE_CURRENT_SOURCE_DIR}/COPYING" "${WZ_DIST_LICENSE}" COPYONLY)
+endif()
+
+set(wz2100_ROOT_FILES ChangeLog AUTHORS COPYING.NONGPL "${WZ_DIST_LICENSE}" COPYING.README README.md)
 
 CONFIGURE_WZ_COMPILER_WARNINGS()
-add_subdirectory(lib)
+add_subdirectory(build_tools)
 add_subdirectory(data)
+add_subdirectory(lib)
 add_subdirectory(doc)
 add_subdirectory(icons)
 add_subdirectory(po)
@@ -721,7 +752,7 @@ endif()
 foreach(rfile ${wz2100_ROOT_FILES})
 	install(FILES ${rfile}
 			COMPONENT Info
-			DESTINATION "${CMAKE_INSTALL_DOCDIR}"
+			DESTINATION "${CMAKE_INSTALL_DOCDIR}${WZ_OUTPUT_NAME_SUFFIX}"
 	)
 endforeach()
 

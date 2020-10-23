@@ -14,6 +14,11 @@ parameters:
   default: ''
 - name: xcodeDeveloperDir
   default: 'default'
+- name: vcpkgBuildXcodeDeveloperDir
+  default: 'default'
+- name: includeVideos
+  type: boolean
+  default: false
 - name: publishArtifact
   type: boolean
   default: false
@@ -35,6 +40,8 @@ jobs:
   variables:
     MACOSX_DEPLOYMENT_TARGET: 10.10
     DESIRED_XCODE_DEV_DIR: ${{ parameters.xcodeDeveloperDir }}
+    DESIRED_VCPKG_BUILD_XCODE_DEV_DIR: ${{ parameters.vcpkgBuildXcodeDeveloperDir }}
+    WZ_INCLUDE_VIDEOS: ${{ parameters.includeVideos }}
 
   steps:
   - template: prepare-repo-steps.yml
@@ -82,20 +89,33 @@ jobs:
 
         echo "Current directory: $(pwd)"
         ADDITIONAL_CONFIGURE_ARGS=""
+        ADDITIONAL_CMAKE_ARGUMENTS="-DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY=;-DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO"
+        echo "WZ_INCLUDE_VIDEOS=${WZ_INCLUDE_VIDEOS}"
+        if [ "${WZ_INCLUDE_VIDEOS}" == "True" ]; then
+          ADDITIONAL_CMAKE_ARGUMENTS="${ADDITIONAL_CMAKE_ARGUMENTS};-DWZ_INCLUDE_VIDEOS:BOOL=ON"
+        else
+          ADDITIONAL_CMAKE_ARGUMENTS="${ADDITIONAL_CMAKE_ARGUMENTS};-DWZ_INCLUDE_VIDEOS:BOOL=OFF"
+        fi
+        echo "ADDITIONAL_CMAKE_ARGUMENTS=${ADDITIONAL_CMAKE_ARGUMENTS}"
         if [ "${DESIRED_XCODE_DEV_DIR}" != "default" ]; then
           # Need to run configure_mac script twice
 
-          echo "Run configure_mac to just build vcpkg (with system default Xcode)"
+          if [ "${DESIRED_VCPKG_BUILD_XCODE_DEV_DIR}" != "default" ]; then
+            echo "Run configure_mac to just build vcpkg (with Xcode: ${DESIRED_VCPKG_BUILD_XCODE_DEV_DIR})"
+            sudo xcode-select -switch "${DESIRED_VCPKG_BUILD_XCODE_DEV_DIR}"
+          else
+            echo "Run configure_mac to just build vcpkg (with system default Xcode)"
+          fi
           ADDITIONAL_CONFIGURE_ARGS="-DONLY_BUILD_VCPKG=true"
           echo "cmake ${ADDITIONAL_CONFIGURE_ARGS} -DVCPKG_BUILD_TYPE=release -DWZ_DISTRIBUTOR:STRING=\"${WZ_DISTRIBUTOR}\" -DADDITIONAL_CMAKE_ARGUMENTS=\"-DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY=;-DCODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO\" -P ../configure_mac.cmake"
-          cmake ${ADDITIONAL_CONFIGURE_ARGS} -DVCPKG_BUILD_TYPE=release -DWZ_DISTRIBUTOR:STRING="${WZ_DISTRIBUTOR}" -DADDITIONAL_CMAKE_ARGUMENTS="-DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY=;-DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO" -P ../src/configure_mac.cmake
+          cmake ${ADDITIONAL_CONFIGURE_ARGS} -DVCPKG_BUILD_TYPE=release -DWZ_DISTRIBUTOR:STRING="${WZ_DISTRIBUTOR}" -DADDITIONAL_CMAKE_ARGUMENTS="${ADDITIONAL_CMAKE_ARGUMENTS}" -P ../src/configure_mac.cmake
 
           echo "Switching Xcode: ${DESIRED_XCODE_DEV_DIR}"
           sudo xcode-select -switch "${DESIRED_XCODE_DEV_DIR}"
           ADDITIONAL_CONFIGURE_ARGS="-DSKIP_VCPKG_BUILD=true"
         fi
         echo "cmake ${ADDITIONAL_CONFIGURE_ARGS} -DVCPKG_BUILD_TYPE=release -DWZ_DISTRIBUTOR:STRING=\"${WZ_DISTRIBUTOR}\" -DADDITIONAL_CMAKE_ARGUMENTS=\"-DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY=;-DCODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO\" -P ../configure_mac.cmake"
-        cmake ${ADDITIONAL_CONFIGURE_ARGS} -DVCPKG_BUILD_TYPE=release -DWZ_DISTRIBUTOR:STRING="${WZ_DISTRIBUTOR}" -DADDITIONAL_CMAKE_ARGUMENTS="-DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY=;-DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO" -P ../src/configure_mac.cmake
+        cmake ${ADDITIONAL_CONFIGURE_ARGS} -DVCPKG_BUILD_TYPE=release -DWZ_DISTRIBUTOR:STRING="${WZ_DISTRIBUTOR}" -DADDITIONAL_CMAKE_ARGUMENTS="${ADDITIONAL_CMAKE_ARGUMENTS}" -P ../src/configure_mac.cmake
         result=${?}
         if [ $result -ne 0 ]; then
         	echo "ERROR: configure_mac.cmake failed"
@@ -120,7 +140,13 @@ jobs:
         echo "BUILD_ARTIFACTSTAGINGDIRECTORY=${BUILD_ARTIFACTSTAGINGDIRECTORY}"
         OUTPUT_DIR="${BUILD_ARTIFACTSTAGINGDIRECTORY}"
 
-        cat "build/src/autorevision.h"
+        echo "[autorevision.h]:"
+        cat "build/build_tools/autorevision.h"
+        echo "==============================="
+
+        echo "[netplay_config.h]:"
+        cat "build/lib/netplay/netplay_config.h"
+        echo "==============================="
 
         # Verify "warzone2100.zip" was created
         BUILT_WARZONE_ZIP="build/warzone2100.zip"
@@ -162,6 +188,9 @@ jobs:
 
         # Move warzone2100.zip to the output directory, renaming it
         DESIRED_ZIP_NAME="warzone2100_macOS.zip"
+        if [ "${WZ_INCLUDE_VIDEOS}" != "True" ]; then
+          DESIRED_ZIP_NAME="warzone2100_macOS_novideos.zip"
+        fi
         mv "$BUILT_WARZONE_ZIP" "${OUTPUT_DIR}/${DESIRED_ZIP_NAME}"
         result=${?}
         if [ $result -ne 0 ]; then
@@ -180,7 +209,7 @@ jobs:
       artifact: ${{ parameters.artifact }}
   - task: GithubRelease@1
     displayName: 'Upload to GitHub Release'
-    condition: and(eq('${{ parameters.uploadArtifactToGitHubReleases }}', true), ne('${{ parameters.gitHubConnection }}', ''), startsWith(variables['Build.SourceBranch'], 'refs/tags/'))
+    condition: and(succeeded(), eq('${{ parameters.uploadArtifactToGitHubReleases }}', true), ne('${{ parameters.gitHubConnection }}', ''), startsWith(variables['Build.SourceBranch'], 'refs/tags/'))
     inputs:
       gitHubConnection: ${{ parameters.gitHubConnection }}
       action: edit

@@ -5,6 +5,7 @@ const research_test = [
 ];
 
 const research_blue = [
+"R-Wpn-MG1Mk1",
 "R-Sys-Engineering01",
 "R-Defense-Tower01",
 "R-Vehicle-Prop-Halftracks",	//Полугусенецы
@@ -28,9 +29,9 @@ const research_blue = [
 ];
 
 const research_rich = [
+"R-Wpn-MG1Mk1",
 "R-Sys-Engineering01",		// #1  Engineering
 "R-Sys-Sensor-Turret01",		// #3  Sensor Turret
-"R-Wpn-MG1Mk1",		// #0  Machinegun
 "R-Wpn-MG-Damage01",		// #2  Hardened MG Bullets
 "R-Wpn-Cannon1Mk1",		// #4  Light Cannon
 "R-Vehicle-Engine01",		// #5  Fuel Injection Engine
@@ -169,6 +170,7 @@ const research_green = [
 "R-Defense-WallTower02", //защита лёгкая пушка
 "R-Struc-Power-Upgrade03a",
 "R-Struc-Research-Upgrade09",
+"R-Vehicle-Prop-Hover",
 "R-Sys-MobileRepairTurretHvy",
 "R-Sys-Autorepair-General",             //Автопочинка
 //"R-Sys-ECM-Upgrade01",	//Глушилка
@@ -201,6 +203,7 @@ const research_green = [
 ];
 
 const research_yellow = [
+"R-Wpn-MG1Mk1",
 "R-Defense-Tower01",
 "R-Sys-Engineering01",
 "R-Struc-Research-Module",
@@ -210,6 +213,7 @@ const research_yellow = [
 "R-Wpn-Flamer01Mk1",
 "R-Struc-PowerModuleMk1",
 "R-Struc-Power-Upgrade03a",
+"R-Vehicle-Prop-Hover",
 "R-Defense-MortarPit-Incenediary",
 "R-Struc-Factory-Cyborg",
 "R-Wpn-Flamer-ROF03",
@@ -242,6 +246,7 @@ const research_yellow = [
 
 //Flamer-cannon-vtols
 const research_orange = [
+"R-Wpn-MG1Mk1",
 "R-Defense-Tower01",
 "R-Sys-Engineering01",
 "R-Vehicle-Prop-Halftracks",	//Полугусенецы
@@ -262,6 +267,7 @@ const research_orange = [
 "R-Struc-VTOLPad",
 "R-Wpn-Bomb04",
 "R-Struc-Power-Upgrade03a",
+"R-Vehicle-Prop-Hover",
 //"R-Sys-ECM-Upgrade02",	//Глушилка
 "R-Vehicle-Body05",				//Средняя начальная броня
 "R-Cyborg-Metals09",
@@ -307,10 +313,11 @@ const research_red = [
 "R-Sys-MobileRepairTurret01",   //Паяльник
 "R-Wpn-MG-Damage08",			//Depleted Uranium MG Bullets
 "R-Wpn-Rocket01-LtAT",
+"R-Vehicle-Prop-Hover",
 "R-Vehicle-Body05",				//Средняя начальная броня
 "R-Struc-Research-Upgrade09",
 "R-Sys-MobileRepairTurretHvy",
-"R-Vehicle-Metals09",			//Superdense Composite Alloys Mk3 (финал) 
+"R-Vehicle-Metals09",			//Superdense Composite Alloys Mk3 (финал)
 "R-Sys-Autorepair-General",		//Автопочинка
 //"R-Sys-ECM-Upgrade02",	//Глушилка
 "R-Wpn-MG5",					//Twin Assault Gun
@@ -328,6 +335,7 @@ const research_red = [
 
 //cyborg_cannons
 const research_black = [
+"R-Wpn-MG1Mk1",
 "R-Sys-Engineering01",		// #0  Engineering
 "R-Struc-Factory-Cyborg",		// #1  Cyborg Factory
 "R-Vehicle-Engine01",		// #2  Fuel Injection Engine
@@ -448,9 +456,9 @@ const research_black = [
 "R-Struc-Power-Upgrade03a",		// #116  Vapor Turbine Generator Mk3
 "R-Wpn-Plasmite-Flamer",		// #117  Plasmite Flamer
 "R-Wpn-Flamer-Damage06",		// #118  Superhot Flamer Gel Mk3
-"R-Wpn-Flamer-Damage07",		// #119  Superhot Plasmite gel
-"R-Wpn-Flamer-Damage08",		// #120  Superhot Plasmite gel Mk2
-"R-Wpn-Flamer-Damage09",		// #121  Superhot Plasmite gel Mk3
+"R-Wpn-Flamer-Damage07",		// #119  Superhot Plasmite Gel
+"R-Wpn-Flamer-Damage08",		// #120  Superhot Plasmite Gel Mk2
+"R-Wpn-Flamer-Damage09",		// #121  Superhot Plasmite Gel Mk3
 "R-Struc-Research-Upgrade09",		// #122  Neural Synapse Research Brain Mk3
 "R-Sys-Autorepair-General",		// #123  Auto-Repair
 "R-Wpn-Cannon-Damage08",		// #124  HVAPFSDS Cannon Rounds Mk2
@@ -513,7 +521,7 @@ const research_black = [
 "R-Sys-Autorepair-General",		//Автопочинка
 "R-Wpn-Cannon-Damage09",
 "R-Wpn-Cannon-Accuracy02",
-"R-Vehicle-Metals09",			//Superdense Composite Alloys Mk3 (финал) 
+"R-Vehicle-Metals09",			//Superdense Composite Alloys Mk3 (финал)
 "R-Vehicle-Engine09",
 */
 ];
@@ -532,7 +540,7 @@ function chooseResearch(){
 		debugMsg("bc_ally="+bc_ally.length, 'research');
 		if(bc_ally.length > 1){
 			_r=bc_ally.indexOf(me)%_w.length;
-			debugMsg("way="+_r, 'research_way');	
+			debugMsg("way="+_r, 'research_way');
 		}else{
 			_r=Math.floor(Math.random()*_w.length);
 		}
@@ -576,7 +584,7 @@ function setResearchWay(way){
 		debugMsg("Использую тестовый путь исследований "+way, 'init');
 		return;
 	}
-	
+
 	if(way == "Blue"){
 		research_primary = research_blue;
 		//	researchStrategy = 'Strict';
@@ -595,5 +603,3 @@ function setResearchWay(way){
 //2:0
 //Green - Standart
 //0:2
-
-
